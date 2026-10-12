@@ -1,0 +1,86 @@
+/* Localization tool. Only what the shared PID classes do not cover. */
+
+/* The world is 10 m by 7 m; keep that shape at every width, including the
+   phone breakpoint where .sim-canvas-wrap switches to 4 / 3. */
+#tool-localization .loc-map-wrap { aspect-ratio: 10 / 7; touch-action: manipulation; }
+#tool-localization .loc-map-wrap canvas { cursor: pointer; outline: none; }
+/* The wrap clips its children, so the focus ring goes on the wrap. */
+#tool-localization .loc-map-wrap:has(canvas:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#tool-localization .loc-chart canvas { height: 240px; }
+
+.loc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--fg-muted); }
+.loc-key { display: inline-flex; align-items: center; gap: 6px; }
+.loc-key svg { width: 16px; height: 16px; flex: none; }
+.loc-key-truth svg { color: var(--fg); }
+.loc-key-pf svg { color: var(--plot-measured); }
+.loc-key-ekf svg { color: var(--plot-control); }
+.loc-star { fill: var(--highlight); stroke: var(--fg); stroke-width: 1; }
+
+#tool-localization .metric .small { margin-top: 2px; }
+
+.loc-pad {
+  display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 40px); gap: 6px;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.loc-pad .btn { height: 40px; padding: 0; font-size: var(--text-lg); }
+.loc-pad [data-drive="fwd"] { grid-column: 2; grid-row: 1; }
+.loc-pad [data-drive="left"] { grid-column: 1; grid-row: 2; }
+.loc-pad [data-drive="back"] { grid-column: 2; grid-row: 2; }
+.loc-pad [data-drive="right"] { grid-column: 3; grid-row: 2; }
+.loc-pad .btn.is-held { background: var(--solid); border-color: var(--solid); color: var(--solid-fg); }
+
+/* Live math rows, one KaTeX line each (see tex.js). */
+.loc-live { display: grid; gap: 2px; min-width: 0; }
+
+/* Zoom view: in the side column, beside the map rather than on it. */
+.loc-inset { width: 100%; max-width: 300px; aspect-ratio: 1 / 1; margin: 0 auto; }
+.loc-about { margin-top: 8px; }
+.loc-about summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.loc-about p { margin: 6px 0 0; }
+
+/* Algorithm toggles: one pill per estimator, with its line color. */
+.loc-algos { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.loc-algo {
+  padding: 4px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--panel); color: var(--fg-muted);
+}
+.loc-algo:has(input:checked) { border-color: var(--line-strong); color: var(--fg); }
+.loc-algo-about { max-width: 640px; text-align: left; }
+.loc-algo-about ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+
+/* Line swatches, also used in the chart legend and the table. */
+.loc-swatch {
+  display: inline-block; flex: none; width: 18px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  background: var(--c);
+}
+.loc-c-pf { --c: var(--plot-measured); }
+.loc-c-ekf { --c: var(--plot-control); }
+.loc-c-ukf { --c: var(--plot-i); }
+.loc-c-grid { --c: var(--plot-p); }
+.loc-c-dr { --c: var(--fg-subtle); background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
+.loc-algo .loc-swatch { margin-right: 0; }
+
+.loc-key-grid svg { color: var(--plot-p); }
+.loc-key-wall svg { color: var(--fg-muted); }
+.loc-key-blocked svg { color: var(--bad-fg); }
+.loc-chart-legend { margin: -4px 0 6px; }
+
+/* Wall mode needs the drag, so the page must not scroll under it. */
+#tool-localization .loc-map-wrap.is-wall-mode { touch-action: none; }
+#tool-localization .loc-map-wrap.is-wall-mode canvas { cursor: crosshair; }
+.loc-edit-row .small { margin-right: 4px; }
+
+/* Metrics: a table of estimators, then two tiles. */
+.loc-table th.row { white-space: nowrap; }
+.loc-table td.loc-word { font-family: var(--font-sans); text-align: left; }
+.loc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Drive: heading, pad and hint read as one centered group. */
+.loc-drive { display: grid; justify-items: center; gap: 6px; margin-top: 14px; text-align: center; }
+.loc-drive p { margin: 0; max-width: 280px; }
+.loc-drive .loc-pad { width: max-content; }
+@media (max-width: 640px) {
+  .loc-table th, .loc-table td { padding: 4px; }
+  .loc-table th.row { white-space: normal; }
+  .loc-table .loc-swatch { width: 12px; }
+}
