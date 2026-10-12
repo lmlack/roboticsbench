@@ -1008,7 +1008,7 @@ export class Localization {
   constructor({ seed = 1, particles = 1000, walls = DEFAULT_WALLS } = {}) {
     this.rng = mulberry32(seed);
     this.gauss = makeGauss(this.rng);
-    this.params = { odomNoise: 1, sensorNoise: 0.1, maxRange: 6 };
+    this.params = { odomNoise: 1, sensorNoise: 0.1, maxRange: 6, wind: 0, windDir: 0, gusty: false };
     this.landmarks = DEFAULT_LANDMARKS.map((l) => ({ ...l }));
     this.walls = walls.map((w) => ({ ...w }));
     this.autopilot = true;
@@ -1026,6 +1026,7 @@ export class Localization {
   reset() {
     this.t = 0;
     this.acc = 0;
+    this.gust = 1;
     this.truth = { ...START };
     this.u = { v: 0, w: 0 };
     this.dr.init(START);
@@ -1063,6 +1064,31 @@ export class Localization {
     this.ekf.init(c, 2.5, 2, Math.PI / 2);
     this.ukf.init(c, 2.5, 2, Math.PI / 2);
     this.grid.initUniform();
+  }
+
+  /**
+   * The wind, in meters per second, as a vector. Nothing tells the filters
+   * about it: the odometry they are given is still the commanded motion, so
+   * the push shows up only as the robot ending up somewhere else.
+   */
+  windVector() {
+    const g = this.params.gusty ? this.gust : 1;
+    const v = this.params.wind * g;
+    return { x: v * Math.cos(this.params.windDir), y: v * Math.sin(this.params.windDir), gust: g };
+  }
+
+  /**
+   * Gusts: a slow pull back toward the average with a random kick, so the
+   * strength wanders between a third and about twice the setting. Seeded from
+   * the same generator as everything else, so runs still repeat.
+   */
+  stepGust() {
+    if (!this.params.gusty) {
+      this.gust = 1;
+      return;
+    }
+    this.gust += (1 - this.gust) * 0.4 * DT + 1.1 * Math.sqrt(DT) * this.gauss();
+    this.gust = Math.min(2.2, Math.max(0.3, this.gust));
   }
 
   /** Free for the robot's body: inside the map and clear of every wall. */
@@ -1247,6 +1273,12 @@ export class Localization {
       this.bumps++;
     }
     tr.th = wrap(tr.th + wn * DT);
+
+    // Wind pushes the body after the wheels have had their say. Blowing into
+    // a wall is not a bump: the counter is for the robot driving into things.
+    this.stepGust();
+    const air = this.windVector();
+    if (air.x || air.y) this.moveTruth(air.x * DT, air.y * DT);
 
     this.dr.predict(u.v, u.w, DT);
     this.pf.predict(u.v, u.w, DT, k);

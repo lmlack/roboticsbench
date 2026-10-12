@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>roboticsbench</title>
 <meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID tuning, a Kalman filter, localization and motion planning.">
+<link rel="canonical" href="https://gwark.dev/roboticsbench/">
+<meta property="og:title" content="roboticsbench">
+<meta property="og:description" content="Six robotics tools that run in your browser: rotations, a URDF viewer, PID tuning, a Kalman filter, localization and motion planning.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="gwark.dev">
+<meta property="og:url" content="https://gwark.dev/roboticsbench/">
+<meta property="og:image" content="https://gwark.dev/roboticsbench/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="roboticsbench: six robotics tools that run in your browser.">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/hyper-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/righteous-400.woff2" as="font" type="font/woff2" crossorigin>
@@ -29,7 +40,7 @@
 <body>
 
 <div class="parent-bar">
-  <a href="https://gwark.dev"><img src="gwark-mark.svg" alt=""><span>A project of</span> <b>gwark.dev ↗</b></a>
+  <a href="https://gwark.dev/#projects"><img src="gwark-mark.svg" alt=""><span>A project of</span> <b>gwark.dev ↗</b></a>
 </div>
 
 <header class="site-header">
@@ -83,35 +94,35 @@
     <p>Six robotics tools that run in your browser.</p>
   </div>
   <div class="cards">
-    <a class="card " href="#rotations">
+    <a class="card fin-rot" href="#rotations">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v18"/><path d="M18.5 6.5 21 9l-3.2.6"/></svg></span>
       <h2>Rotation converter</h2>
       <p>Quaternions, Euler angles in all 24 conventions, axis-angle and matrices, kept in sync.</p>
     </a>
-    <a class="card fin-teal" href="#urdf">
+    <a class="card fin-urdf" href="#urdf">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h8M8 20v-3"/><circle cx="8" cy="15" r="2"/><path d="M9.4 13.6 14 9"/><circle cx="15.2" cy="7.8" r="1.6"/><path d="M16.6 8.6 19.5 11l1-1.5M19.5 11l-.5 1.8"/></svg></span>
       <h2>URDF viewer</h2>
       <p>Load a robot, drag its joints, read the end-effector pose and Jacobian.</p>
     </a>
-    <a class="card fin-mustard" href="#pid">
+    <a class="card fin-pid" href="#pid">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 18c3 0 3-12 6-12s3 9 5 9 2-5 4-5 2 2 5 2"/><path d="M2 12h20" stroke-dasharray="2 2.5" opacity=".6"/></svg></span>
       <h2>PID tuning</h2>
       <p>Tune a drone, an arm and an inverted pendulum, with the math live.</p>
     </a>
-    <a class="card fin-teal" href="#kalman">
+    <a class="card fin-kalman" href="#kalman">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 19c4 0 5-13 10-13s6 13 10 13"/><path d="M12 6v13"/></svg></span>
       <h2>Kalman filter</h2>
       <p>Steer a noisy cart, mis-tune Q and R, and watch the estimate react.</p>
     </a>
-    <a class="card fin-mustard" href="#localization">
+    <a class="card fin-loc" href="#localization">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11Z"/><circle cx="12" cy="10" r="2"/><circle cx="4" cy="5" r=".8" fill="currentColor"/><circle cx="20" cy="6" r=".8" fill="currentColor"/><circle cx="19" cy="18" r=".8" fill="currentColor"/></svg></span>
       <h2>Localization</h2>
-      <p>Particle filter against EKF on a landmark map. Kidnap the robot.</p>
+      <p>Particle filter against EKF on a landmark map. Kidnap the robot, or turn on the wind.</p>
     </a>
-    <a class="card " href="#planning">
+    <a class="card fin-plan" href="#planning">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V14h6V8h6V4"/><circle cx="4" cy="20" r="1.6" fill="currentColor"/><path d="M16 4h4M18 2v4"/><path d="M13 14h6v6h-6z" opacity=".55"/></svg></span>
       <h2>Motion planning</h2>
-      <p>Draw walls, then race A*, Dijkstra, RRT and RRT* to the goal.</p>
+      <p>Draw or upload a map, then race A*, Dijkstra, RRT and RRT* to the goal.</p>
     </a>
   </div>
 </section>
@@ -233,7 +244,7 @@
   <div class="tool-head">
     <h1>URDF viewer</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Load a robot, drag its joints and read off the end-effector pose and Jacobian. Files stay in your browser; nothing is uploaded.</p>
+    <p>URDF, the Unified Robot Description Format, is the XML file that tells the rest of a robot stack what the robot is shaped like. Load one, drag its joints and read off the end-effector pose and Jacobian. Files stay in your browser; nothing is uploaded.</p>
   </div>
 
   <div class="urdf-layout">
@@ -317,6 +328,38 @@
             <button type="button" data-v="csv" aria-pressed="false">CSV</button>
           </div>
           <button type="button" class="btn" id="jac-copy">Copy Jacobian</button>
+        </div>
+      </div>
+
+      <div class="panel" id="urdf-about" style="margin-top:16px">
+        <div class="panel-title"><h2>What URDF is</h2><span class="small subtle">and what reads it</span></div>
+        <div class="math-grid">
+          <div class="math-block">
+            <p class="eyebrow">The format</p>
+            <p class="small">An XML file describing one robot as rigid <b>links</b> joined by <b>joints</b>. A link carries three optional bodies: <span class="inline-code">visual</span> for what you see, <span class="inline-code">collision</span> for what the planner tests against, usually a coarser shape, and <span class="inline-code">inertial</span> for mass and the inertia tensor.</p>
+            <p class="small">The joints form a tree: one root link, and every other link reached by exactly one joint from its parent. That is the format's main limit. A closed loop, like a delta robot or a four-bar linkage, cannot be written down directly. <span class="inline-code">mimic</span> couples one joint to another and covers some of it; past that you need SDF or a solver that closes the loop itself.</p>
+          </div>
+          <div class="math-block">
+            <p class="eyebrow">What a joint says</p>
+            <p class="small"><span class="inline-code">origin</span> places the child frame in the parent at zero position, <span class="inline-code">axis</span> is the unit vector it turns or slides along, and <span class="inline-code">limit</span> caps travel, effort and velocity.</p>
+            <p class="small">Six types, three of them common: <b>revolute</b> turns within limits, <b>continuous</b> turns forever, like a wheel, <b>prismatic</b> slides. <b>fixed</b> moves not at all and is how sensors, tool plates and named frames get attached. <b>floating</b> and <b>planar</b> exist and are thinly supported.</p>
+            <p class="small subtle">Meters, radians and kilograms throughout. <span class="inline-code">rpy</span> is fixed-axis roll, pitch, yaw, applied X then Y then Z, which is the same rotation as intrinsic Z-Y-X. Frames are right handed, and REP 103 asks for x forward, y left, z up.</p>
+          </div>
+          <div class="math-block">
+            <p class="eyebrow">Where it gets used</p>
+            <p class="small">It is the one description a whole ROS stack shares, so the pieces agree on the geometry:</p>
+            <ul class="small urdf-uses">
+              <li><b>robot_state_publisher</b> takes the URDF plus live joint angles and publishes the TF tree, which is how anything else answers "where is the camera relative to the gripper right now".</li>
+              <li><b>RViz</b> draws the robot from it. <b>Gazebo</b> and other simulators take the inertial and collision bodies as the physics, with extra <span class="inline-code">gazebo</span> tags for sensors and plugins.</li>
+              <li><b>MoveIt</b> plans against the joint limits and collision bodies, with a companion SRDF adding the meaning: which joints form an arm, what counts as the end effector, which link pairs never collide.</li>
+              <li><b>KDL</b>, <b>Pinocchio</b> and friends build forward kinematics, inverse kinematics, Jacobians and dynamics from the same file. This page does the first and third of those.</li>
+            </ul>
+          </div>
+          <div class="math-block">
+            <p class="eyebrow">How they are really written</p>
+            <p class="small">Almost nobody types URDF by hand. It comes out of a CAD exporter, or it is written as <b>xacro</b>, an XML macro language with variables, arithmetic and includes, and expanded into plain URDF when the robot launches. Raw URDF has no way to reuse anything, so a six-jointed arm would be six copies of the same block with the numbers changed.</p>
+            <p class="small">Meshes are referenced as <span class="inline-code">package://my_robot_description/meshes/link1.stl</span>, a path resolved against the installed ROS packages rather than the disk. Nothing outside ROS knows how to follow that, which is why this viewer asks for the folder: it matches the tail of the path against the files you handed it.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -566,7 +609,7 @@
   <div class="tool-head">
     <h1>Localization</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>A robot works out where it is from noisy odometry and range and bearing to known landmarks, with walls in the way. Five estimators read the same data.</p>
+    <p>A robot works out where it is from noisy odometry and range and bearing to known landmarks, with walls in the way. Five estimators read the same data. Turn on the wind to push the robot in a way none of them is told about.</p>
   </div>
 
   <div class="pid-top">
@@ -660,6 +703,20 @@
           <div class="gain-head"><label for="loc-range">Max range <small>m</small></label><input class="field" id="loc-range-num" inputmode="decimal" aria-label="Sensor max range in meters"></div>
           <input type="range" id="loc-range">
         </div>
+      </div>
+
+      <div class="side-section">
+        <p class="eyebrow" style="margin-bottom:8px">Wind</p>
+        <div class="gain">
+          <div class="gain-head"><label for="loc-wind">Strength <small>m/s</small></label><input class="field" id="loc-wind-num" inputmode="decimal" aria-label="Wind strength in meters per second"></div>
+          <input type="range" id="loc-wind">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="loc-winddir">Direction <small>degrees</small></label><input class="field" id="loc-winddir-num" inputmode="decimal" aria-label="Wind direction in degrees"></div>
+          <input type="range" id="loc-winddir">
+        </div>
+        <label class="check"><input type="checkbox" id="loc-gusty"> Gusty</label>
+        <p class="small subtle" id="loc-wind-note"></p>
       </div>
 
       <div class="side-section">
@@ -764,7 +821,7 @@
   <div class="tool-head">
     <h1>Motion planning</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Draw walls, move the start and goal, and watch each planner search the grid. The table runs every planner on the same map.</p>
+    <p>Draw walls, move the start and goal, and watch each planner search the grid, or scrub the search back and forth one expansion at a time. Bring your own map as a text file. The table runs every planner on the same map.</p>
   </div>
 
   <div class="pid-top">
@@ -776,9 +833,40 @@
     <div class="pid-stage">
       <div class="panel">
         <div class="map-strip" id="plan-maps" role="group" aria-label="Maps"></div>
+        <input type="file" id="plan-map-file" accept=".txt,.map,text/plain" hidden>
+        <div class="map-upload">
+          <div class="map-upload-head">
+            <button type="button" class="btn solid" id="plan-map-pick">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Using your own map
+            </button>
+            <button type="button" class="btn" id="plan-map-download">Download this one</button>
+            <span class="small subtle">or drop a <span class="mono">.txt</span> file on the grid</span>
+          </div>
+          <p class="small" id="plan-map-status" role="status"></p>
+          <details class="map-format">
+            <summary class="small">What goes in the file</summary>
+            <div class="map-format-body">
+              <p class="small">One character per cell, one line per row. Any text editor will do.</p>
+              <ul class="small map-legend">
+                <li><span class="mono">.</span> free cell</li>
+                <li><span class="mono">#</span> wall</li>
+                <li><span class="mono">S</span> start, at most one</li>
+                <li><span class="mono">G</span> goal, at most one</li>
+                <li><span class="mono">;</span> a note, for any line you want ignored</li>
+              </ul>
+              <pre class="map-example mono" id="plan-map-example"></pre>
+              <p class="small subtle">Rows may be ragged: a short one is padded with free cells. Leave out <span class="mono">S</span> or <span class="mono">G</span> and they are placed in the free space for you. Between 5 by 5 and 200 by 200 cells. The quickest way in is <b>Download this one</b>, edit it, and bring it back.</p>
+              <div class="btn-row">
+                <button type="button" class="btn" id="plan-map-copy">Copy the example</button>
+              </div>
+            </div>
+          </details>
+        </div>
         <div class="sim-canvas-wrap" id="plan-stage-wrap" style="aspect-ratio: 61 / 41">
           <canvas id="plan-canvas" role="img" aria-label="Occupancy grid. Drag to draw walls, drag the start or goal to move it."></canvas>
           <span class="sim-badge" id="plan-badge"></span>
+          <span class="hint">Drop a <span class="mono">.txt</span> map here</span>
         </div>
         <div class="controls-row" style="margin:12px 0 0">
           <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;border-radius:50%;background:var(--plot-d)"></span>Start</span>
@@ -829,9 +917,15 @@
       <div class="side-section">
         <div class="btn-row">
           <button type="button" class="btn solid" id="plan-run">Run</button>
-          <button type="button" class="btn" id="plan-step">Step</button>
+          <button type="button" class="btn" id="plan-back" title="One step back through the search">Back</button>
+          <button type="button" class="btn" id="plan-step" title="One step forward through the search">Step</button>
           <button type="button" class="btn" id="plan-pause">Pause</button>
           <button type="button" class="btn" id="plan-reset">Reset</button>
+        </div>
+        <div class="gain" style="margin:14px 0 0">
+          <div class="gain-head"><label for="plan-scrub">Timeline</label><span class="small subtle" id="plan-scrub-num"></span></div>
+          <input type="range" id="plan-scrub" min="0" max="1" step="1" value="0" disabled aria-label="Scrub through the search, one expansion per step">
+          <p class="small subtle" style="margin:4px 0 0">Drag to rewind or fast-forward. The search is replayed, not recorded, so every step is exact. Arrow keys nudge it one at a time.</p>
         </div>
         <div class="gain" style="margin:14px 0 0">
           <div class="gain-head"><label for="plan-speed">Speed</label><span class="small"><span class="mono" id="plan-speed-num"></span> <span id="plan-speed-unit"></span></span></div>

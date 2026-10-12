@@ -409,3 +409,88 @@ test("Start over restores the default walls", async () => {
   assert.deepEqual(sim.walls, DEFAULT_WALLS);
   assert.notEqual(sim.walls[0], DEFAULT_WALLS[0], "a copy, so later edits leave the defaults alone");
 });
+
+// ---- Wind ----
+
+test("still air leaves the robot where the command puts it", () => {
+  const sim = new Localization({ seed: 5, particles: 300 });
+  sim.params.odomNoise = 0;
+  const air = sim.windVector();
+  assert.equal(air.x, 0);
+  assert.equal(air.y, 0);
+  sim.params.wind = 0.3; // set but pointed nowhere until it is nonzero
+  sim.params.windDir = 0;
+  assert.ok(sim.windVector().x > 0, "wind along +x pushes along +x");
+  assert.ok(Math.abs(sim.windVector().y) < 1e-12);
+});
+
+test("wind moves the true robot without touching the odometry the filters get", () => {
+  const runs = {};
+  for (const wind of [0, 0.3]) {
+    const sim = new Localization({ seed: 5, particles: 300 });
+    // Hand driving, because the autopilot steers by the true pose: let it run
+    // and the wind would change the commands too, which is not what is at
+    // issue here. A fixed command isolates what the filters are handed.
+    sim.autopilot = false;
+    sim.manual = { v: 0.4, w: 0 };
+    sim.params.odomNoise = 0; // no slip either, so the wind is the only difference
+    sim.params.wind = wind;
+    sim.params.windDir = Math.PI / 2; // straight up the map
+    for (let i = 0; i < 40; i++) sim.step();
+    runs[wind] = { truth: { ...sim.truth }, dr: sim.dr.estimate() };
+  }
+  // Dead reckoning integrates the command and nothing else, so it lands in
+  // exactly the same place both times: nothing told it about the wind.
+  assert.ok(Math.abs(runs[0].dr.x - runs[0.3].dr.x) < 1e-9, "dead reckoning saw the same commands");
+  assert.ok(Math.abs(runs[0].dr.y - runs[0.3].dr.y) < 1e-9);
+  // The robot itself ends up pushed up the map, and the gap is the wind times
+  // the time: 0.3 m/s for 40 steps of 50 ms is 0.6 m.
+  const pushed = runs[0.3].truth.y - runs[0].truth.y;
+  assert.ok(Math.abs(pushed - 0.3 * 40 * DT) < 1e-6, `pushed ${pushed}, expected ${0.3 * 40 * DT}`);
+});
+
+test("wind never pushes the robot through a wall or off the map", () => {
+  const sim = new Localization({ seed: 2, particles: 300 });
+  sim.params.wind = 0.5;
+  sim.params.windDir = Math.PI; // straight into the left side
+  for (let i = 0; i < 1200; i++) {
+    sim.step();
+    assert.ok(sim.poseFree(sim.truth.x, sim.truth.y), `left the free space at t = ${sim.t.toFixed(2)}`);
+  }
+});
+
+test("gusts wander but stay bounded, and a run still repeats exactly", () => {
+  const strengths = [];
+  const trace = [];
+  for (const pass of [0, 1]) {
+    const sim = new Localization({ seed: 11, particles: 300 });
+    sim.params.wind = 0.3;
+    sim.params.gusty = true;
+    const seen = [];
+    for (let i = 0; i < 600; i++) {
+      sim.step();
+      seen.push(sim.gust);
+      assert.ok(sim.gust >= 0.3 - 1e-9 && sim.gust <= 2.2 + 1e-9, `gust out of range: ${sim.gust}`);
+    }
+    if (pass === 0) strengths.push(...seen);
+    trace.push(`${sim.truth.x.toFixed(9)},${sim.truth.y.toFixed(9)}`);
+  }
+  assert.equal(trace[0], trace[1], "the same seed gives the same gusts");
+  assert.ok(Math.max(...strengths) - Math.min(...strengths) > 0.3, "the gusts actually vary");
+});
+
+test("the particle filter holds on in wind that loses the EKF", () => {
+  let pfWins = 0;
+  for (const seed of [4, 9, 12]) {
+    const sim = new Localization({ seed, particles: 600 });
+    sim.params.wind = 0.3;
+    sim.params.windDir = Math.PI * 0.75;
+    for (let i = 0; i < 1200; i++) sim.step();
+    const tr = sim.truth;
+    const err = (e) => Math.hypot(e.x - tr.x, e.y - tr.y);
+    const pf = err(sim.pf.estimate()), ekf = err(sim.ekf.estimate());
+    assert.ok(pf < 1.5, `seed ${seed}: the particle filter should still be on the robot, error ${pf}`);
+    if (ekf > pf) pfWins++;
+  }
+  assert.equal(pfWins, 3, "the gated EKF should be the one that suffers");
+});

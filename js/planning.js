@@ -4,10 +4,11 @@
 // KaTeX through tex.js.
 
 import {
-  ALGOS, GRID_H, GRID_W, HEURISTICS, PRESETS, SEEDED_PRESETS,
-  compareAll, defaultHeuristic, freeCount, heuristicProps, makePreset, planner, rrtGamma, rrtRadius,
+  ALGOS, GRID_H, GRID_W, HEURISTICS, MAP_FORMAT, PRESETS, SEEDED_PRESETS,
+  compareAll, defaultHeuristic, formatMap, freeCount, heuristicProps, makePreset, parseMap, planner,
+  rrtGamma, rrtRadius,
 } from "./planning-sim.js";
-import { cssVar, el, evalNumber, fmt, segmented } from "./util.js";
+import { copyText, cssVar, el, evalNumber, fmt, segmented } from "./util.js";
 import { inl, num, tex } from "./tex.js";
 
 // Expansions (or iterations) per frame. Fractions skip frames.
@@ -18,6 +19,7 @@ const COMPARE_SEED = 1;
 
 export function start(root) {
   const $ = (sel) => root.querySelector(sel);
+  const wrap = $("#plan-stage-wrap");
   let map = makePreset("clutter", 1);
   const opt = { algo: "astar", conn: 8, heuristic: "octile", weight: 2, step: 3, goalBias: 0.05, budget: 3000 };
   let speedIdx = 6;
@@ -26,9 +28,18 @@ export function start(root) {
   let raf = 0;
   let colors = readColors();
 
-  // Animated run
+  // Animated run. Every planner here is a deterministic generator, so a run
+  // is really a recording: step N is whatever the generator yields on its Nth
+  // call. That makes scrubbing possible without storing 2500 copies of the
+  // grid. Going forward advances the live generator; going back rebuilds it
+  // from the start and fast-forwards, which costs well under a millisecond
+  // for the grid searches and about 25 ms for a full RRT*.
   let gen = null;
   let cur = null;
+  let curStep = 0;    // how many steps of the recording have been played
+  let totalSteps = 0; // its full length, measured when the run is created
+  let runOpts = null; // the options the recording was made with, including the seed
+  let pendingSeek = null;
   let playing = false;
   let stepAcc = 0;
   let runSeed = 1;
@@ -149,6 +160,8 @@ export function start(root) {
   const strip = $("#plan-maps");
   const seeds = Object.fromEntries(Object.keys(PRESETS).map((k) => [k, 1]));
   const cards = {};
+  const UPLOAD_KEY = "__upload";
+  let uploaded = null; // the parsed file, kept as written
   let currentPreset = "clutter"; // matches the map loaded above
   for (const [k, name] of Object.entries(PRESETS)) {
     const thumb = el("canvas", { width: GRID_W, height: GRID_H, "aria-hidden": "true" });
@@ -164,9 +177,16 @@ export function start(root) {
     strip.append(card);
   }
   function drawThumb(k) {
-    const { grid, start, goal } = makePreset(k, seeds[k]);
-    const ctx = cards[k].thumb.getContext("2d");
-    const img = ctx.createImageData(GRID_W, GRID_H);
+    const src = k === UPLOAD_KEY ? uploaded : makePreset(k, seeds[k]);
+    if (!src) return;
+    const { grid, start, goal } = src;
+    const thumb = cards[k].thumb;
+    if (thumb.width !== grid.w || thumb.height !== grid.h) {
+      thumb.width = grid.w;
+      thumb.height = grid.h;
+    }
+    const ctx = thumb.getContext("2d");
+    const img = ctx.createImageData(grid.w, grid.h);
     const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
     const wall = rgb(colors.solid), free = rgb(colors.raised);
     for (let i = 0; i < grid.cells.length; i++) {
@@ -177,7 +197,7 @@ export function start(root) {
       const c = rgb(hex);
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const x = p.x + dx, y = p.y + dy;
-        if (x >= 0 && y >= 0 && x < GRID_W && y < GRID_H) img.data.set([c[0], c[1], c[2], 255], (y * GRID_W + x) * 4);
+        if (x >= 0 && y >= 0 && x < grid.w && y < grid.h) img.data.set([c[0], c[1], c[2], 255], (y * grid.w + x) * 4);
       }
     };
     dot(start, colors.start);
@@ -185,15 +205,117 @@ export function start(root) {
     ctx.putImageData(img, 0, 0);
   }
   function drawThumbs() {
-    for (const k of Object.keys(PRESETS)) drawThumb(k);
+    for (const k of Object.keys(cards)) drawThumb(k);
   }
+  const cloneMap = (m) => ({
+    grid: { w: m.grid.w, h: m.grid.h, cells: new Uint8Array(m.grid.cells) },
+    start: { ...m.start }, goal: { ...m.goal },
+  });
   function loadPreset(k) {
     currentPreset = k;
-    map = makePreset(k, seeds[k]);
+    // The uploaded map is kept pristine, so picking its card reloads the file
+    // as written rather than whatever has been drawn on top of it since.
+    map = k === UPLOAD_KEY ? cloneMap(uploaded) : makePreset(k, seeds[k]);
     for (const [key, { card }] of Object.entries(cards)) card.setAttribute("aria-pressed", String(key === k));
     drawThumb(k);
     mapChanged(true);
   }
+  // ---- Your own map ----
+  // The card leads the strip and stays pinned to its left edge while the
+  // presets scroll past, because a card at the far end of twelve is a card
+  // nobody finds. Before a file is in it, it is the button that opens the
+  // picker; after, it behaves like any other map.
+  const fileInput = $("#plan-map-file");
+  const mapStatus = $("#plan-map-status");
+  const uploadCard = {};
+  {
+    const thumb = el("canvas", { width: GRID_W, height: GRID_H, "aria-hidden": "true", hidden: true });
+    // A pixelated 61 by 41 canvas is no place for an icon, so the empty state
+    // is its own element and the two swap.
+    const empty = el("span", { class: "map-card-empty", "aria-hidden": "true" });
+    empty.innerHTML = '<svg viewBox="0 0 16 16"><path d="M8 11V2.5M4.5 6 8 2.5 11.5 6M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const label = el("span", { text: "Your map" });
+    const card = el("button", {
+      type: "button", class: "map-card map-card-upload", "aria-pressed": "false",
+      title: "Load a map from a text file",
+      onclick: () => (uploaded ? loadPreset(UPLOAD_KEY) : fileInput.click()),
+    }, empty, thumb, label);
+    cards[UPLOAD_KEY] = { card, thumb };
+    Object.assign(uploadCard, { card, thumb, empty, label });
+    strip.prepend(card);
+  }
+  /** The card shows the file once there is one, and the icon until then. */
+  function syncUploadCard() {
+    uploadCard.empty.hidden = !!uploaded;
+    uploadCard.thumb.hidden = !uploaded;
+    uploadCard.card.title = uploaded ? "Your map. Click to reload it as written." : "Load a map from a text file";
+  }
+
+  function setMapStatus(text, bad = false) {
+    mapStatus.textContent = text;
+    mapStatus.className = bad ? "small is-bad" : "small subtle";
+  }
+
+  /** Parse one file's text and make it the current map, or explain why not. */
+  function loadMapText(text, name = "your file") {
+    let parsed;
+    try {
+      parsed = parseMap(text);
+    } catch (err) {
+      setMapStatus(`${name} could not be read. ${err.message}`, true);
+      return false;
+    }
+    uploaded = parsed;
+    syncUploadCard();
+    loadPreset(UPLOAD_KEY);
+    const placed = parsed.placed.length ? ` No ${parsed.placed.join(" or ")} in the file, so it was placed for you.` : "";
+    setMapStatus(`Loaded ${name}: ${parsed.grid.w} by ${parsed.grid.h} cells.${placed}`);
+    return true;
+  }
+
+  function readFile(file) {
+    if (!file) return;
+    if (file.size > 2e6) {
+      setMapStatus(`${file.name} is too big to be a map file.`, true);
+      return;
+    }
+    file.text().then((t) => loadMapText(t, file.name)).catch(() => setMapStatus(`${file.name} could not be opened.`, true));
+  }
+  fileInput.addEventListener("change", () => {
+    readFile(fileInput.files[0]);
+    // Clearing it means picking the same file twice in a row still fires.
+    fileInput.value = "";
+  });
+
+  // Dropping a file on the grid is the other obvious way to try this.
+  for (const ev of ["dragenter", "dragover"]) {
+    wrap.addEventListener(ev, (e) => {
+      e.preventDefault();
+      wrap.classList.add("drop-target");
+    });
+  }
+  for (const ev of ["dragleave", "drop"]) {
+    wrap.addEventListener(ev, () => wrap.classList.remove("drop-target"));
+  }
+  wrap.addEventListener("drop", (e) => {
+    e.preventDefault();
+    readFile(e.dataTransfer?.files?.[0]);
+  });
+
+  $("#plan-map-pick").addEventListener("click", () => fileInput.click());
+  $("#plan-map-example").textContent = MAP_FORMAT.example;
+  $("#plan-map-copy").addEventListener("click", (e) => copyText(MAP_FORMAT.example, e.currentTarget));
+  $("#plan-map-download").addEventListener("click", () => {
+    const text = formatMap(map.grid, map.start, map.goal);
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const a = el("a", { href: url, download: `${currentPreset === UPLOAD_KEY ? "map" : currentPreset}.txt` });
+    a.click();
+    // Revoking at once can beat the download on some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    setMapStatus("Downloaded the map as it is drawn right now, walls, start and goal included.");
+  });
+
+  syncUploadCard();
   cards[currentPreset].card.setAttribute("aria-pressed", "true");
   drawThumbs();
 
@@ -208,6 +330,7 @@ export function start(root) {
   }));
 
   function mapChanged(hard = false) {
+    setStageAspect();
     if (hard) resetRun();
     else invalidateRun();
     scheduleCompare();
@@ -215,15 +338,23 @@ export function start(root) {
   }
 
   // ---- Playback ----
+  const atEnd = () => gen && curStep >= totalSteps;
   $("#plan-run").addEventListener("click", () => {
-    if (!gen || cur?.done) newRun();
+    // Finished runs start over; a run scrubbed back to the middle resumes.
+    if (!gen || atEnd()) newRun();
     playing = true;
     requestRender();
   });
   $("#plan-step").addEventListener("click", () => {
-    if (!gen || cur?.done) newRun();
+    if (!gen || atEnd()) newRun();
     playing = false;
-    advance(1);
+    seekTo(curStep + 1);
+    requestRender();
+  });
+  $("#plan-back").addEventListener("click", () => {
+    // Never starts a run: there is nothing behind the beginning of one.
+    playing = false;
+    seekTo(curStep - 1);
     requestRender();
   });
   $("#plan-pause").addEventListener("click", () => {
@@ -235,16 +366,62 @@ export function start(root) {
     requestRender();
   });
 
+  // The scrubber. Dragging fires many input events per frame, so the seek is
+  // deferred to the next frame and only the last position of each frame runs.
+  const scrub = $("#plan-scrub");
+  scrub.addEventListener("input", () => {
+    if (!gen) {
+      scrub.value = "0";
+      return;
+    }
+    playing = false;
+    pendingSeek = Number(scrub.value);
+    requestRender();
+  });
+  function syncScrub() {
+    const label = $("#plan-scrub-num");
+    scrub.disabled = !gen;
+    scrub.max = String(Math.max(1, totalSteps));
+    if (document.activeElement !== scrub || pendingSeek === null) scrub.value = String(curStep);
+    const unit = ALGOS[opt.algo].kind === "tree" ? "iteration" : "step";
+    label.textContent = gen ? `${unit} ${curStep} of ${totalSteps}` : "nothing recorded yet";
+  }
+
+  const makeGen = () => planner(opt.algo, map.grid, map.start, map.goal, runOpts);
+  /** The length of the recording, so the scrubber can span the whole run. */
+  function countSteps() {
+    let n = 0;
+    for (const _ of makeGen()) n++;
+    return n;
+  }
   function newRun() {
     const tree = ALGOS[opt.algo].kind === "tree";
-    gen = planner(opt.algo, map.grid, map.start, map.goal, { ...opt, seed: tree ? runSeed++ : 0 });
+    runOpts = { ...opt, seed: tree ? runSeed++ : 0 };
+    totalSteps = countSteps();
+    gen = makeGen();
     cur = null;
+    curStep = 0;
     stepAcc = 0;
   }
   function resetRun() {
     gen = null;
     cur = null;
+    curStep = 0;
+    totalSteps = 0;
+    runOpts = null;
+    pendingSeek = null;
     playing = false;
+  }
+  /** Move the recording to `target`. Backward means replaying from the start. */
+  function seekTo(target) {
+    if (!gen) return;
+    target = Math.max(0, Math.min(totalSteps, target));
+    if (target < curStep) {
+      gen = makeGen();
+      cur = null;
+      curStep = 0;
+    }
+    advance(target - curStep, Infinity);
   }
   /**
    * After an edit, a finished grid search reruns at once so the path follows
@@ -260,26 +437,29 @@ export function start(root) {
     requestRender();
   }
   function advance(n, timeLimit = FRAME_MS) {
+    if (!gen || n <= 0) return;
     const t0 = performance.now();
-    for (let k = 0; k < n; k++) {
+    const target = n === Infinity ? totalSteps : Math.min(totalSteps, curStep + n);
+    while (curStep < target) {
       const r = gen.next();
       if (r.done) {
-        playing = false;
+        // The recording turned out shorter than measured: trust what ran.
+        totalSteps = curStep;
         break;
       }
       cur = r.value;
-      if (cur.done) {
-        playing = false;
-        break;
-      }
+      curStep++;
       // Checking the clock every step would cost more than the steps.
-      if ((k & 63) === 63 && performance.now() - t0 > timeLimit) break;
+      if ((curStep & 63) === 63 && performance.now() - t0 > timeLimit) break;
     }
+    if (curStep >= totalSteps) playing = false;
   }
 
   // ---- Canvas sizing ----
-  const wrap = $("#plan-stage-wrap");
-  wrap.style.aspectRatio = `${GRID_W} / ${GRID_H}`;
+  function setStageAspect() {
+    wrap.style.aspectRatio = `${map.grid.w} / ${map.grid.h}`;
+  }
+  setStageAspect();
   const canvas = $("#plan-canvas");
   let size = null;
   new ResizeObserver(() => {
@@ -296,12 +476,12 @@ export function start(root) {
 
   function cellAt(e) {
     const r = canvas.getBoundingClientRect();
-    const fx = ((e.clientX - r.left) / r.width) * GRID_W;
-    const fy = ((e.clientY - r.top) / r.height) * GRID_H;
+    const fx = ((e.clientX - r.left) / r.width) * map.grid.w;
+    const fy = ((e.clientY - r.top) / r.height) * map.grid.h;
     return {
-      x: Math.min(GRID_W - 1, Math.max(0, Math.floor(fx))),
-      y: Math.min(GRID_H - 1, Math.max(0, Math.floor(fy))),
-      fx, fy, cellPx: r.width / GRID_W,
+      x: Math.min(map.grid.w - 1, Math.max(0, Math.floor(fx))),
+      y: Math.min(map.grid.h - 1, Math.max(0, Math.floor(fy))),
+      fx, fy, cellPx: r.width / map.grid.w,
     };
   }
   function nearMarker(p, m) {
@@ -387,7 +567,7 @@ export function start(root) {
     if (!size || !size.w) return;
     const ctx = canvas.getContext("2d");
     const W = canvas.width, H = canvas.height, dpr = size.dpr;
-    const kx = W / GRID_W, ky = H / GRID_H;
+    const kx = W / map.grid.w, ky = H / map.grid.h;
     const X = (x) => Math.round(x * kx), Y = (y) => Math.round(y * ky);
     const cell = (x, y) => ctx.fillRect(X(x), Y(y), X(x + 1) - X(x), Y(y + 1) - Y(y));
     const { grid } = map;
@@ -418,11 +598,11 @@ export function start(root) {
       ctx.lineWidth = 1;
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
-      for (let x = 1; x < GRID_W; x++) {
+      for (let x = 1; x < map.grid.w; x++) {
         ctx.moveTo(X(x) + 0.5, 0);
         ctx.lineTo(X(x) + 0.5, H);
       }
-      for (let y = 1; y < GRID_H; y++) {
+      for (let y = 1; y < map.grid.h; y++) {
         ctx.moveTo(0, Y(y) + 0.5);
         ctx.lineTo(W, Y(y) + 0.5);
       }
@@ -624,7 +804,7 @@ export function start(root) {
     }
     const liveEl = $("#plan-math-live");
     if (!tree && cur?.kind === "grid" && cur.current >= 0) {
-      const x = cur.current % GRID_W, y = Math.floor(cur.current / GRID_W);
+      const x = cur.current % map.grid.w, y = Math.floor(cur.current / map.grid.w);
       const node = `n = (${x}, ${y}):\\quad g = ${num(cur.gCur)}`;
       let live;
       if (algo === "bfs") live = `${node} \\quad (h \\text{ not used})`;
@@ -732,6 +912,10 @@ export function start(root) {
   function frame(now) {
     raf = 0;
     if (!active) return;
+    if (pendingSeek !== null) {
+      seekTo(pendingSeek);
+      pendingSeek = null;
+    }
     if (playing && gen) {
       const s = SPEEDS[speedIdx];
       stepAcc += s;
@@ -743,6 +927,7 @@ export function start(root) {
     }
     draw();
     updateReadouts();
+    syncScrub();
     // The math panel rebuilds HTML, so during playback it runs at about 10 Hz.
     if (!playing || now - mathClock > 100) {
       mathClock = now;

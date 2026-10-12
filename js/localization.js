@@ -84,6 +84,10 @@ export function start(root) {
     odom: { min: 0, max: 3, step: 0.1, digits: 1, get: () => sim.params.odomNoise, set: (v) => (sim.params.odomNoise = v) },
     sensor: { min: 0.02, max: 0.5, step: 0.01, digits: 2, get: () => sim.params.sensorNoise, set: (v) => (sim.params.sensorNoise = v) },
     range: { min: 1, max: 12, step: 0.5, digits: 1, get: () => sim.params.maxRange, set: (v) => (sim.params.maxRange = v) },
+    // The robot's own top speed is 0.7 m/s, so half a meter per second of wind
+    // is most of what it can push against.
+    wind: { min: 0, max: 0.5, step: 0.01, digits: 2, get: () => sim.params.wind, set: (v) => (sim.params.wind = v) },
+    winddir: { min: 0, max: 355, step: 5, digits: 0, get: () => sim.params.windDir / DEG, set: (v) => (sim.params.windDir = v * DEG) },
   };
   for (const [key, cfg] of Object.entries(SLIDERS)) {
     const slider = $(`#loc-${key}`);
@@ -97,6 +101,7 @@ export function start(root) {
       slider.value = c;
       num.value = fmt(cfg.get(), cfg.digits);
       if (key === "sensor") sensorNote();
+      if (key === "wind" || key === "winddir") windNote();
     };
     slider.addEventListener("input", () => apply(Number(slider.value)));
     num.addEventListener("change", () => {
@@ -105,11 +110,31 @@ export function start(root) {
       else num.value = fmt(cfg.get(), cfg.digits);
     });
   }
+  $("#loc-gusty").addEventListener("change", (e) => {
+    sim.params.gusty = e.target.checked;
+    windNote();
+  });
+  function windNote() {
+    const v = sim.params.wind;
+    const note = $("#loc-wind-note");
+    if (v <= 0) {
+      note.textContent = "Still air. The robot goes where it is told, give or take the wheel slip.";
+      return;
+    }
+    const deg = Math.round(sim.params.windDir / DEG);
+    note.innerHTML =
+      `Pushing <span class="mono">${fmt(v, 2)} m/s</span> toward <span class="mono">${deg}&deg;</span>` +
+      `${sim.params.gusty ? ", gusting" : ""}. The odometry handed to every filter is still the commanded motion, ` +
+      "so the wind is an error none of them models. Dead reckoning has no way to see it; the EKF and UKF gate it out and get lost; " +
+      "the particle and grid filters keep hold because they never commit to one answer.";
+  }
+
   function sensorNote() {
     const { r, b } = sim.sigma;
     $("#loc-sensor-note").innerHTML = `Range <span class="mono">σ<sub>r</sub> = ${fmt(r, 2)} m</span>, bearing <span class="mono">σ<sub>φ</sub> = ${fmt(b / DEG, 1)}°</span>`;
   }
   sensorNote();
+  windNote();
 
   // ---- Buttons ----
   let event = null; // the last kidnap or reset, for the status line
@@ -389,6 +414,9 @@ export function start(root) {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(g.X(0) + 0.75, g.Y(WORLD.h) + 0.75, WORLD.w * g.s - 1.5, WORLD.h * g.s - 1.5);
 
+    // Wind sits behind everything: it is the stage, not an actor.
+    if (sim.params.wind > 0) drawWind(ctx, g);
+
     if (on("grid")) drawHeat(ctx, g);
 
     const tr = sim.truth;
@@ -498,6 +526,82 @@ export function start(root) {
   }
 
   /** Grid belief, max over heading, one rectangle per cell. */
+  /**
+   * Streaks drifting the way the air pushes, plus the strength in the corner.
+   * An invisible force on the robot is worth making visible on the page, or
+   * the estimators simply look broken.
+   */
+  function drawWind(ctx, g) {
+    const air = sim.windVector();
+    const speed = Math.hypot(air.x, air.y);
+    if (speed <= 1e-6) return;
+    // Canvas y runs down while world y runs up, so the arrow flips with it.
+    const ux = Math.cos(sim.params.windDir), uy = -Math.sin(sim.params.windDir);
+    const x0 = g.X(0), y0 = g.Y(WORLD.h), W = WORLD.w * g.s, H = WORLD.h * g.s;
+    const span = Math.hypot(W, H) / 2 + 40;
+    const across = Math.max(22, g.s * 0.42);
+    const along = across * 2.6;
+    const len = Math.min(34, g.s * 0.6);
+    // The whole field slides along the wind at the wind's own speed, so the
+    // streaks move at the rate the robot is actually being pushed.
+    const drift = (((sim.t * speed * g.s) % along) + along) % along;
+    const cx = x0 + W / 2, cy = y0 + H / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, W, H);
+    ctx.clip();
+    ctx.strokeStyle = colors.subtle;
+    ctx.globalAlpha = Math.min(0.42, 0.12 + speed * 0.55);
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (let a = -span; a <= span; a += across) {
+      for (let b = -span; b <= span; b += along) {
+        const px = cx + ux * (b + drift) - uy * a;
+        const py = cy + uy * (b + drift) + ux * a;
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + ux * len, py + uy * len);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // The rose, bottom right, clear of the robot's loop through the middle.
+    const r = Math.max(16, Math.min(24, g.s * 0.42));
+    const rx = x0 + W - r - 14, ry = y0 + H - r - 24;
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = colors.panel;
+    ctx.beginPath();
+    ctx.arc(rx, ry, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = colors.line;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.strokeStyle = colors.bad;
+    ctx.fillStyle = colors.bad;
+    ctx.lineWidth = 2;
+    const tipX = rx + ux * r * 0.68, tipY = ry + uy * r * 0.68;
+    ctx.beginPath();
+    ctx.moveTo(rx - ux * r * 0.68, ry - uy * r * 0.68);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tipX + ux * 6, tipY + uy * 6);
+    ctx.lineTo(tipX - ux * 5 - uy * 5, tipY - uy * 5 + ux * 5);
+    ctx.lineTo(tipX - ux * 5 + uy * 5, tipY - uy * 5 - ux * 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = "600 12px Hyper, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = colors.fg;
+    ctx.fillText(`${fmt(speed, 2)} m/s`, rx, ry + r + 3);
+    ctx.restore();
+  }
+
   function drawHeat(ctx, g) {
     const grid = sim.grid;
     if (!(grid.heatMax > 0)) return;
