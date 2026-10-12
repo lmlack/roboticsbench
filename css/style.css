@@ -347,9 +347,17 @@ canvas { display: block; }
 .card .icon svg { width: 28px; height: 28px; }
 .card h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: var(--text-xl); }
 .card p { margin: 0; color: var(--fg-muted); font-size: var(--text-sm); }
-.card.fin-teal { --fin: var(--teal); }
-.card.fin-mustard { --fin: var(--highlight); }
-.card.fin-mustard .icon { color: var(--warn-fg); }
+/* One hue per tool: six cards, six colors. Every value is already in the
+   palette, so each has a dark-mode counterpart and nothing new to maintain. */
+.card.fin-rot { --fin: var(--accent); }
+.card.fin-urdf { --fin: var(--teal); }
+.card.fin-pid { --fin: var(--highlight); }
+.card.fin-kalman { --fin: var(--plot-i); }
+.card.fin-loc { --fin: var(--plot-error); }
+.card.fin-plan { --fin: var(--plot-d); }
+/* Mustard is a fill color. It carries a corner fin fine but not a 2px stroke
+   on a white circle, so the icon alone steps down to the darker warn tone. */
+.card.fin-pid .icon { color: var(--warn-fg); }
 
 /* ---------- Rotations ---------- */
 
@@ -404,6 +412,14 @@ pre.code {
 }
 
 /* ---------- URDF ---------- */
+
+/* The "where it gets used" list: the tool names carry it, so they stay at full
+   contrast while the explanation behind each one steps back. */
+.urdf-uses { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--fg-muted); }
+.urdf-uses b { color: var(--fg); }
+/* One of these is a full package:// mesh path. Let it break rather than push
+   out of the column; the short tokens are too short to break anyway. */
+#urdf-about .inline-code { overflow-wrap: anywhere; }
 
 .urdf-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
 .urdf-side { display: grid; gap: 16px; min-width: 0; }
@@ -492,6 +508,58 @@ table.jac tr:last-child td { border-bottom: 0; }
 .map-card:hover { border-color: var(--line-strong); color: var(--fg); }
 .map-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--fg); font-weight: 600; }
 .map-card canvas { width: 92px; height: 62px; image-rendering: pixelated; border-radius: 6px; }
+
+/* "Your map" leads the strip and stays put while the presets scroll under it,
+   so the way in to your own file is never off the edge. Every other card is a
+   picture of a map; this one is the only thing in the strip that does
+   something, so it is the only one that carries the accent color. */
+.map-card-upload {
+  position: sticky; left: 0; z-index: 1;
+  border-style: dashed; border-color: var(--accent);
+  background: var(--accent-soft); color: var(--accent);
+}
+.map-card-upload:hover { border-color: var(--accent); color: var(--accent); }
+.map-card-upload[aria-pressed="true"] { border-style: solid; background: var(--panel); }
+.map-card-upload > span:last-child { font-weight: 600; }
+.map-card-upload::after {
+  content: ""; position: absolute; top: 0; right: -10px; bottom: 0; width: 10px;
+  background: linear-gradient(to right, var(--accent-soft), transparent); pointer-events: none;
+}
+.map-card-upload[aria-pressed="true"]::after { background: linear-gradient(to right, var(--panel), transparent); }
+.map-card-empty {
+  display: grid; place-items: center; width: 92px; height: 62px; border-radius: 6px;
+  border: 1.5px dashed var(--accent); color: var(--accent);
+}
+.map-card-empty svg { width: 26px; height: 26px; }
+.sim-canvas-wrap.drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
+
+/* Bringing your own map is an action, so it gets a row of its own rather than
+   a line of help text folded away under a disclosure triangle. The dashed
+   accent edge is the same one the grid shows while a file is over it, so the
+   callout and the drop target read as the same offer. */
+.map-upload { margin: 0 0 12px; padding: 10px 12px; background: var(--panel); border: 1.5px dashed var(--accent); border-radius: 12px; }
+.map-upload-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.map-upload-head .btn svg { width: 15px; height: 15px; margin-right: 6px; vertical-align: -3px; }
+.map-format { margin: 10px 0 0; }
+.map-format > summary { cursor: pointer; color: var(--fg-muted); }
+.map-format > summary:hover { color: var(--fg); }
+.map-format-body { padding: 10px 0 0; display: grid; gap: 10px; }
+.map-format-body p { margin: 0; }
+.map-legend { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--fg-muted); }
+/* The characters are the point of the list, so they get drawn as keys: a lone
+   period in running text is close to invisible. */
+.map-legend .mono {
+  display: inline-block; min-width: 1.9em; margin-right: 6px; text-align: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 5px; color: var(--fg);
+}
+.map-example {
+  margin: 0; padding: 10px 12px; overflow-x: auto; line-height: 1.35;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  font-size: var(--text-sm); color: var(--fg);
+}
+#plan-map-status:empty { display: none; }
+#plan-map-status { margin: 10px 0 0; }
+#plan-map-status.is-bad { color: var(--bad-fg); font-weight: 600; }
 
 /* ---------- PID math ---------- */
 

@@ -393,6 +393,103 @@ function cave(w, h, seed) {
 // ---- Binary heap ----
 
 /** Min-heap on (key, tie). Stale entries are skipped by the caller. */
+// ---- Reading and writing maps as text ----
+
+export const MAP_LIMITS = { minW: 5, minH: 5, maxW: 200, maxH: 200 };
+
+/** The format, in one place, so the parser and the help text cannot drift. */
+export const MAP_FORMAT = {
+  free: ".",
+  wall: "#",
+  start: "S",
+  goal: "G",
+  note: ";",
+  example: [
+    "; Lines starting with a semicolon are notes.",
+    "; . free   # wall   S start   G goal",
+    "..........",
+    ".S...#....",
+    ".....#....",
+    ".....#..G.",
+    "..........",
+  ].join("\n"),
+};
+
+/**
+ * Parses an ASCII map: one character per cell, one line per row. Short rows
+ * are padded with free cells, so a map does not have to be a perfect
+ * rectangle. Throws an Error whose message names the problem and where it is,
+ * since that message is what the page shows the person who wrote the file.
+ */
+export function parseMap(text) {
+  const lines = String(text).replace(/\r/g, "").split("\n")
+    .map((line, i) => ({ line, no: i + 1 }))
+    .filter(({ line }) => !line.startsWith(MAP_FORMAT.note));
+  // Blank lines around the grid are padding; blank lines inside it are rows.
+  while (lines.length && !lines[0].line.trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].line.trim()) lines.pop();
+  if (!lines.length) throw new Error("The file has no map in it.");
+
+  const h = lines.length;
+  const w = Math.max(...lines.map(({ line }) => line.length));
+  const { minW, minH, maxW, maxH } = MAP_LIMITS;
+  if (w < minW || h < minH) throw new Error(`The map is ${w} by ${h}. The smallest allowed is ${minW} by ${minH}.`);
+  if (w > maxW || h > maxH) throw new Error(`The map is ${w} by ${h}. The largest allowed is ${maxW} by ${maxH}.`);
+
+  const grid = makeGrid(w, h);
+  let start = null, goal = null;
+  for (let y = 0; y < h; y++) {
+    const { line, no } = lines[y];
+    for (let x = 0; x < w; x++) {
+      const ch = x < line.length ? line[x] : MAP_FORMAT.free;
+      if (ch === MAP_FORMAT.free || ch === " ") continue;
+      if (ch === MAP_FORMAT.wall) {
+        grid.cells[y * w + x] = 1;
+      } else if (ch === "S" || ch === "s") {
+        if (start) throw new Error(`Two starts: one already at (${start.x}, ${start.y}), another on line ${no}.`);
+        start = { x, y };
+      } else if (ch === "G" || ch === "g") {
+        if (goal) throw new Error(`Two goals: one already at (${goal.x}, ${goal.y}), another on line ${no}.`);
+        goal = { x, y };
+      } else {
+        throw new Error(`Line ${no}, column ${x + 1}: "${ch}" is not one of . # S G`);
+      }
+    }
+  }
+
+  const free = [];
+  for (let i = 0; i < grid.cells.length; i++) if (!grid.cells[i]) free.push(i);
+  if (!free.length) throw new Error("Every cell is a wall, so there is nowhere to plan.");
+  const cellOf = (i) => ({ x: i % w, y: Math.floor(i / w) });
+  // A map with no S or G still opens; the corners of the free space will do.
+  const placed = [];
+  if (!start) {
+    start = cellOf(free[0]);
+    placed.push("start");
+  }
+  if (!goal) {
+    goal = cellOf(free[free.length - 1]);
+    placed.push("goal");
+  }
+  if (start.x === goal.x && start.y === goal.y) throw new Error("The start and the goal are the same cell.");
+  return { grid, start, goal, placed };
+}
+
+/** The same map back out as text, so the format documents itself. */
+export function formatMap(grid, start, goal) {
+  const out = [];
+  for (let y = 0; y < grid.h; y++) {
+    let row = "";
+    for (let x = 0; x < grid.w; x++) {
+      if (start && start.x === x && start.y === y) row += MAP_FORMAT.start;
+      else if (goal && goal.x === x && goal.y === y) row += MAP_FORMAT.goal;
+      else row += grid.cells[y * grid.w + x] ? MAP_FORMAT.wall : MAP_FORMAT.free;
+    }
+    out.push(row);
+  }
+  return `${MAP_FORMAT.note} roboticsbench map: ${grid.w} by ${grid.h}\n${MAP_FORMAT.note} . free   # wall   S start   G goal\n${out.join("\n")}\n`;
+}
+
 export class MinHeap {
   constructor() {
     this.ids = [];

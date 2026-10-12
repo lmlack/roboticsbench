@@ -269,18 +269,23 @@ export function start(root) {
 
     body = new THREE.Group();
     body.add(axisTriad(1, { thick: true, labels: true }));
-    // A flat plate with a nose, so the orientation reads even without axes.
+    // A flat plate whose leading edge comes to a point, so the orientation reads
+    // even without axes. It is one extruded outline rather than a plate plus a
+    // cone, because a separate cone sat on the +X arm and read as a second
+    // arrowhead on that axis.
+    const outline = new THREE.Shape();
+    outline.moveTo(-0.45, 0.275);
+    outline.lineTo(0.45, 0.275);
+    outline.lineTo(0.67, 0);
+    outline.lineTo(0.45, -0.275);
+    outline.lineTo(-0.45, -0.275);
+    outline.closePath();
     const plate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.55, 0.08),
+      new THREE.ExtrudeGeometry(outline, { depth: 0.08, bevelEnabled: false }),
       new THREE.MeshStandardMaterial({ color: c.highlight, roughness: 0.6, transparent: true, opacity: 0.35 }),
     );
-    const nose = new THREE.Mesh(
-      new THREE.ConeGeometry(0.09, 0.22, 20),
-      new THREE.MeshStandardMaterial({ color: c.highlight, roughness: 0.6 }),
-    );
-    nose.rotation.z = -Math.PI / 2;
-    nose.position.x = 0.56;
-    body.add(plate, nose);
+    plate.position.z = -0.04;
+    body.add(plate);
     scene.add(grid, world, body);
     showQuat(q);
   }

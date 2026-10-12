@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ALGOS, MinHeap, PRESETS, compareAll, gridSearch, makeGrid, makePreset,
-  pathFree, pathLength, run, segmentFree, segmentFreeSampled, treeSearch,
+  ALGOS, MAP_FORMAT, MinHeap, PRESETS, blocked, compareAll, formatMap, gridSearch, makeGrid, makePreset,
+  parseMap, pathFree, pathLength, run, segmentFree, segmentFreeSampled, treeSearch,
 } from "../js/planning-sim.js";
 
 const close = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
@@ -212,5 +212,73 @@ test("every map connects start and goal, 4- and 8-connected, several seeds", asy
         assert.ok(runGen(gridSearch(m.grid, m.start, m.goal, { algo: "bfs", conn })).found, `${name} seed ${seed} conn ${conn}`);
       }
     }
+  }
+});
+
+// ---- Maps as text ----
+
+test("the documented example parses to what it looks like", () => {
+  const { grid, start, goal, placed } = parseMap(MAP_FORMAT.example);
+  assert.equal(grid.w, 10);
+  assert.equal(grid.h, 5);
+  assert.deepEqual(start, { x: 1, y: 1 });
+  assert.deepEqual(goal, { x: 8, y: 3 });
+  assert.deepEqual(placed, []);
+  assert.equal(blocked(grid, 5, 1), true, "the wall is where the drawing puts it");
+  assert.equal(blocked(grid, 4, 1), false);
+});
+
+test("a map survives the round trip through text", () => {
+  for (const name of ["clutter", "maze", "rooms", "bugtrap", "cave"]) {
+    const a = makePreset(name, 3);
+    const text = formatMap(a.grid, a.start, a.goal);
+    const b = parseMap(text);
+    assert.equal(b.grid.w, a.grid.w);
+    assert.equal(b.grid.h, a.grid.h);
+    assert.deepEqual([...b.grid.cells], [...a.grid.cells], `${name}: the walls came back different`);
+    assert.deepEqual(b.start, a.start);
+    assert.deepEqual(b.goal, a.goal);
+    assert.equal(formatMap(b.grid, b.start, b.goal), text, `${name}: not a fixed point`);
+  }
+});
+
+test("ragged rows are padded and notes are ignored", () => {
+  const { grid, start, goal } = parseMap("; a note\n#####\n#S\n#\n#...G\n#####\n; another");
+  assert.equal(grid.w, 5);
+  assert.equal(grid.h, 5);
+  assert.deepEqual(start, { x: 1, y: 1 });
+  assert.deepEqual(goal, { x: 4, y: 3 });
+  assert.equal(blocked(grid, 4, 1), false, "the padding is free space");
+});
+
+test("a map with no S or G still opens, with both placed", () => {
+  const { start, goal, placed } = parseMap("#####\n#...#\n#...#\n#...#\n#####");
+  assert.deepEqual(placed, ["start", "goal"]);
+  assert.deepEqual(start, { x: 1, y: 1 });
+  assert.deepEqual(goal, { x: 3, y: 3 });
+});
+
+test("a planner actually runs on a parsed map", () => {
+  const { grid, start, goal } = parseMap(["S....", ".###.", ".....", ".###.", "....G"].join("\n"));
+  const res = run(gridSearch(grid, start, goal, { algo: "astar", conn: 8 }));
+  assert.equal(res.found, true);
+  assert.ok(res.path.length > 4);
+  // Path points are cell centers.
+  assert.deepEqual(res.path[0], { x: start.x + 0.5, y: start.y + 0.5 });
+  assert.deepEqual(res.path[res.path.length - 1], { x: goal.x + 0.5, y: goal.y + 0.5 });
+});
+
+test("broken maps are refused with a message that says where", () => {
+  const cases = [
+    ["", /no map in it/],
+    ["..\n..", /smallest allowed/],
+    [".".repeat(201) + "\n" + (".".repeat(201) + "\n").repeat(4), /largest allowed/],
+    ["..........\n..x.......\n..........\n..........\n..........", /Line 2, column 3.*"x"/],
+    ["#####\n#####\n#####\n#####\n#####", /nowhere to plan/],
+    ["S.S..\n.....\n.....\n.....\n....G", /Two starts/],
+    ["S...G\n.....\n.....\n.....\n....G", /Two goals/],
+  ];
+  for (const [text, re] of cases) {
+    assert.throws(() => parseMap(text), re, `should have been refused: ${JSON.stringify(text.slice(0, 20))}`);
   }
 });

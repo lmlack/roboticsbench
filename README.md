@@ -6,8 +6,8 @@ Robotics tools that run in the browser. No build step, no accounts, nothing uplo
 - **URDF viewer**: samples built in, or open a URDF with its meshes (STL, DAE, OBJ) by file, folder or drag and drop. Joint sliders, forward kinematics between any two links, and the geometric Jacobian with manipulability.
 - **PID tuning**: drone altitude, a robot arm against gravity, and an inverted pendulum, simulated live, with live charts of response, error and output, and a math panel showing the control law, the plant, and the closed-loop poles.
 - **Kalman filter**: a noisy 1D tracking problem where the filter's assumed noise can be mis-tuned against the truth, and the cart can be steered by hand to see a maneuver the filter was never told about.
-- **Localization**: a particle filter and an EKF localizing against landmarks, side by side, including a kidnapped robot.
-- **Motion planning**: BFS, Dijkstra, greedy, A*, weighted A*, RRT and RRT* on a grid you draw.
+- **Localization**: dead reckoning, a particle filter, an EKF, a UKF and a grid filter localizing against landmarks, side by side, including a kidnapped robot and a wind that pushes the robot in a way none of them is told about.
+- **Motion planning**: BFS, Dijkstra, greedy, A*, weighted A*, RRT and RRT* on a grid you draw, upload as a text file or download. The search is a timeline you can scrub forward and back one expansion at a time.
 
 The look is Googie (atomic-age signage): a turquoise sky by day, a neon night, Righteous for display type and Atkinson Hyperlegible for everything else.
 
