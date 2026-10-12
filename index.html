@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>roboticsbench</title>
+<meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID tuning, a Kalman filter, localization and motion planning.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/hyper-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/righteous-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/tools/localization.css">
+<link rel="stylesheet" href="css/tools/kalman.css">
+<script>
+  // Before first paint, so the page never flashes the wrong theme.
+  try { if (localStorage.getItem("rb-theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch {}
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/examples/jsm/": "./vendor/three/examples/jsm/",
+    "urdf-loader": "./vendor/urdf-loader/URDFLoader.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<div class="parent-bar">
+  <a href="https://gwark.dev"><img src="gwark-mark.svg" alt=""><span>A project of</span> <b>gwark.dev ↗</b></a>
+</div>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="#home" aria-label="roboticsbench home">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <!-- A robot arm: base, two links, a gripper. Joints in coral. -->
+        <g fill="none" stroke="var(--teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.5 20.5h9"/><path d="M8 20.5v-3.4"/>
+          <path d="M9.4 13.6 14 9"/><path d="M16.6 8.6 19.5 11"/>
+        </g>
+        <g fill="none" stroke="var(--highlight)" stroke-width="1.8" stroke-linecap="round"><path d="M19.5 11l1.2-1.6M19.5 11l-.4 1.9"/></g>
+        <circle cx="8" cy="15" r="2.2" fill="var(--accent)"/>
+        <circle cx="15.2" cy="7.8" r="1.8" fill="var(--accent)"/>
+      </svg>
+      <b class="wordmark">robotics<span>bench</span></b>
+    </a>
+    <nav class="tabs" aria-label="Tools">
+      <a href="#rotations" data-tab="rotations"><span>Rotations</span></a>
+      <a href="#urdf" data-tab="urdf"><span>URDF</span></a>
+      <a href="#pid" data-tab="pid"><span>PID</span></a>
+      <a href="#kalman" data-tab="kalman"><span>Kalman</span></a>
+      <a href="#localization" data-tab="localization"><span>Localization</span></a>
+      <a href="#planning" data-tab="planning"><span>Planning</span></a>
+    </nav>
+    <div class="segmented theme-toggle" role="group" aria-label="Color theme">
+      <button type="button" data-theme-set="light" title="Light mode">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3.1"/><path d="M8 1.2v1.5M8 13.3v1.5M1.2 8h1.5M13.3 8h1.5M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1"/></g></svg>
+        <span class="label">Light</span>
+      </button>
+      <button type="button" data-theme-set="dark" title="Dark mode">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.3 10.2A5.6 5.6 0 0 1 5.8 2.7 6 6 0 1 0 13.3 10.2Z" fill="currentColor"/></svg>
+        <span class="label">Dark</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ======================= Home ======================= -->
+<section id="tool-home" data-tool="home" hidden>
+  <div class="hero">
+    <div class="burst-row" aria-hidden="true">
+      <span class="sparkle" style="color:var(--teal)"></span>
+      <span class="starburst" style="color:var(--highlight);width:54px;height:54px"></span>
+      <span class="sparkle" style="color:var(--accent)"></span>
+    </div>
+    <h1>robotics<span>bench</span></h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>Six robotics tools that run in your browser.</p>
+  </div>
+  <div class="cards">
+    <a class="card " href="#rotations">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3v18"/><path d="M18.5 6.5 21 9l-3.2.6"/></svg></span>
+      <h2>Rotation converter</h2>
+      <p>Quaternions, Euler angles in all 24 conventions, axis-angle and matrices, kept in sync.</p>
+    </a>
+    <a class="card fin-teal" href="#urdf">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h8M8 20v-3"/><circle cx="8" cy="15" r="2"/><path d="M9.4 13.6 14 9"/><circle cx="15.2" cy="7.8" r="1.6"/><path d="M16.6 8.6 19.5 11l1-1.5M19.5 11l-.5 1.8"/></svg></span>
+      <h2>URDF viewer</h2>
+      <p>Load a robot, drag its joints, read the end-effector pose and Jacobian.</p>
+    </a>
+    <a class="card fin-mustard" href="#pid">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 18c3 0 3-12 6-12s3 9 5 9 2-5 4-5 2 2 5 2"/><path d="M2 12h20" stroke-dasharray="2 2.5" opacity=".6"/></svg></span>
+      <h2>PID tuning</h2>
+      <p>Tune a drone, an arm and an inverted pendulum, with the math live.</p>
+    </a>
+    <a class="card fin-teal" href="#kalman">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 19c4 0 5-13 10-13s6 13 10 13"/><path d="M12 6v13"/></svg></span>
+      <h2>Kalman filter</h2>
+      <p>Steer a noisy cart, mis-tune Q and R, and watch the estimate react.</p>
+    </a>
+    <a class="card fin-mustard" href="#localization">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11Z"/><circle cx="12" cy="10" r="2"/><circle cx="4" cy="5" r=".8" fill="currentColor"/><circle cx="20" cy="6" r=".8" fill="currentColor"/><circle cx="19" cy="18" r=".8" fill="currentColor"/></svg></span>
+      <h2>Localization</h2>
+      <p>Particle filter against EKF on a landmark map. Kidnap the robot.</p>
+    </a>
+    <a class="card " href="#planning">
+      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V14h6V8h6V4"/><circle cx="4" cy="20" r="1.6" fill="currentColor"/><path d="M16 4h4M18 2v4"/><path d="M13 14h6v6h-6z" opacity=".55"/></svg></span>
+      <h2>Motion planning</h2>
+      <p>Draw walls, then race A*, Dijkstra, RRT and RRT* to the goal.</p>
+    </a>
+  </div>
+</section>
+
+<!-- ======================= Rotations ======================= -->
+<section id="tool-rotations" data-tool="rotations" hidden>
+  <div class="tool-head">
+    <h1>Rotation converter</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>Edit any form and the rest follow. Every convention is spelled out, so a quaternion in the wrong order cannot slip through.</p>
+  </div>
+
+  <div class="rot-layout">
+    <div class="rot-col">
+      <div class="panel">
+        <div class="panel-title"><h2>Paste anything</h2><span class="small subtle">tf2_echo, a ROS message, NumPy, Eigen, a list</span></div>
+        <textarea id="rot-paste" class="field" rows="3" spellcheck="false" placeholder="Quaternion [0, 0, 0.7071, 0.7071]"></textarea>
+        <div id="rot-paste-status" class="note ok status" hidden></div>
+      </div>
+
+      <div class="panel" data-group="quat">
+        <div class="panel-title">
+          <h2>Quaternion</h2>
+          <div class="segmented" id="rot-qorder" role="group" aria-label="Quaternion order">
+            <button type="button" data-v="wxyz" aria-pressed="true">w x y z</button>
+            <button type="button" data-v="xyzw" aria-pressed="false">x y z w</button>
+          </div>
+        </div>
+        <div class="num-row cols-4" id="rot-quat"></div>
+        <div class="small subtle status" id="rot-quat-status">Normalized on input. w is kept positive.</div>
+      </div>
+
+      <div class="panel" data-group="euler">
+        <div class="panel-title"><h2>Euler angles</h2></div>
+        <div class="controls-row">
+          <span class="select-wrap"><select id="rot-eorder" class="field" aria-label="Axis order"></select></span>
+          <div class="segmented" id="rot-eframe" role="group" aria-label="Rotating or fixed axes">
+            <button type="button" data-v="intrinsic" aria-pressed="true" title="Each rotation about the already-rotated axes">Intrinsic</button>
+            <button type="button" data-v="extrinsic" aria-pressed="false" title="Each rotation about the fixed world axes">Extrinsic</button>
+          </div>
+          <div class="segmented" id="rot-unit" role="group" aria-label="Angle unit">
+            <button type="button" data-v="deg" aria-pressed="true">deg</button>
+            <button type="button" data-v="rad" aria-pressed="false">rad</button>
+          </div>
+        </div>
+        <div class="num-row cols-3" id="rot-euler"></div>
+        <div class="small subtle status" id="rot-euler-desc"></div>
+        <div class="note status" id="rot-gimbal" hidden></div>
+      </div>
+
+      <div class="panel" data-group="axis">
+        <div class="panel-title"><h2>Axis-angle</h2><span class="small subtle" id="rot-axis-unit"></span></div>
+        <div class="num-row cols-4" id="rot-axis"></div>
+      </div>
+
+      <div class="panel" data-group="rotvec">
+        <div class="panel-title"><h2>Rotation vector</h2><span class="small subtle">axis × angle, in rad</span></div>
+        <div class="num-row cols-3" id="rot-rotvec"></div>
+      </div>
+
+      <div class="panel" data-group="matrix">
+        <div class="panel-title"><h2>Rotation matrix</h2><span class="small subtle">rows; columns are the rotated X, Y, Z axes</span></div>
+        <div class="matrix" id="rot-matrix"></div>
+        <div class="small subtle status" id="rot-matrix-status"></div>
+      </div>
+    </div>
+
+    <div class="rot-col rot-preview">
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Preview</h2>
+          <button type="button" class="btn" id="rot-reset">Reset to identity</button>
+        </div>
+        <div class="controls-row">
+          <button type="button" class="btn solid" id="rot-play">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3v10l8.5-5z" fill="currentColor"/></svg>
+            <span>Play</span>
+          </button>
+          <div class="segmented" id="rot-play-mode" role="group" aria-label="How to play the rotation">
+            <button type="button" data-v="path" aria-pressed="true" title="One turn about the axis-angle axis">Shortest path</button>
+            <button type="button" data-v="euler" aria-pressed="false" title="One axis at a time, in the selected Euler convention">Euler steps</button>
+          </div>
+          <label class="check"><input type="checkbox" id="rot-loop" checked> Loop</label>
+        </div>
+        <div class="viewport" id="rot-viewport">
+          <div class="play-caption" id="rot-caption" hidden></div>
+          <div class="legend"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="subtle">thin: world</span></div>
+          <div class="hint">Drag to orbit</div>
+        </div>
+
+        <div class="segmented code-tabs" id="rot-code-tabs" role="group" aria-label="Code language">
+          <button type="button" data-v="scipy" aria-pressed="true">Python</button>
+          <button type="button" data-v="eigen" aria-pressed="false">C++ Eigen</button>
+          <button type="button" data-v="ros" aria-pressed="false">ROS msg</button>
+          <button type="button" data-v="numpy" aria-pressed="false">NumPy matrix</button>
+        </div>
+        <div class="code-wrap">
+          <pre class="code" id="rot-code"></pre>
+          <button type="button" class="btn" id="rot-copy">Copy</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><h2>Watch out</h2></div>
+        <ul class="gotchas">
+          <li>ROS messages, tf2 and SciPy store quaternions <code>x y z w</code>. Eigen's constructor takes <code>w, x, y, z</code>, but <code>.coeffs()</code> returns <code>x y z w</code>.</li>
+          <li>URDF <code>rpy</code> is roll, pitch, yaw about fixed axes: extrinsic XYZ, which equals intrinsic ZYX with the angles reversed.</li>
+          <li><code>q</code> and <code>-q</code> are the same rotation. This page keeps <code>w ≥ 0</code>; other tools may not, so compare rotations, not raw numbers.</li>
+          <li>SciPy: uppercase sequence letters are intrinsic, lowercase are extrinsic. <code>"XYZ"</code> and <code>"xyz"</code> are different rotations.</li>
+          <li>Inputs accept <code>pi</code>, <code>sqrt()</code> and arithmetic, so <code>pi/2</code> or <code>sqrt(2)/2</code> work.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= URDF ======================= -->
+<section id="tool-urdf" data-tool="urdf" hidden>
+  <div class="tool-head">
+    <h1>URDF viewer</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>Load a robot, drag its joints and read off the end-effector pose and Jacobian. Files stay in your browser; nothing is uploaded.</p>
+  </div>
+
+  <div class="urdf-layout">
+    <div class="urdf-side">
+      <div class="panel">
+        <div class="panel-title"><h2>Robot</h2></div>
+        <div class="controls-row">
+          <span class="select-wrap" style="flex:1"><select id="urdf-sample" class="field" aria-label="Sample robot"></select></span>
+        </div>
+        <div class="btn-row">
+          <label class="btn"><input type="file" id="urdf-files" multiple hidden>Open files</label>
+          <label class="btn"><input type="file" id="urdf-folder" webkitdirectory multiple hidden>Open folder</label>
+        </div>
+        <p class="small subtle" style="margin:10px 0 0">Or drop a URDF and its meshes (STL, DAE, OBJ) on the viewer. Drop the whole package folder so <span class="inline-code">package://</span> paths resolve.</p>
+        <details style="margin-top:10px">
+          <summary class="small" style="cursor:pointer">Paste URDF text</summary>
+          <textarea id="urdf-text" class="field" rows="6" spellcheck="false" style="margin-top:8px" placeholder="&lt;robot name=&quot;...&quot;&gt;"></textarea>
+          <button type="button" class="btn" id="urdf-text-load" style="margin-top:8px">Load</button>
+        </details>
+        <div id="urdf-status" class="note ok status" hidden></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Joints</h2>
+          <div class="btn-row">
+            <button type="button" class="btn" id="urdf-zero">Zero</button>
+            <button type="button" class="btn" id="urdf-random">Random</button>
+          </div>
+        </div>
+        <div class="joint-list" id="urdf-joints"></div>
+      </div>
+    </div>
+
+    <div class="urdf-main">
+      <div class="panel">
+        <div class="viewport urdf-viewport" id="urdf-viewport">
+          <div class="legend"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
+          <div class="hint">Drag to orbit, scroll to zoom</div>
+          <div class="drop-hint" id="urdf-drop" hidden>Drop URDF and mesh files</div>
+        </div>
+        <div class="controls-row" style="margin:12px 0 0">
+          <label class="check"><input type="checkbox" id="urdf-frames"> Link frames</label>
+          <label class="check"><input type="checkbox" id="urdf-axes" checked> Joint axes</label>
+          <label class="check"><input type="checkbox" id="urdf-collision"> Collision geometry</label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Forward kinematics</h2>
+          <div class="controls-row" style="margin:0">
+            <span class="small subtle">from</span>
+            <span class="select-wrap"><select id="urdf-base" class="field" aria-label="Base link"></select></span>
+            <span class="small subtle">to</span>
+            <span class="select-wrap"><select id="urdf-tip" class="field" aria-label="Tip link"></select></span>
+          </div>
+        </div>
+        <div class="fk-grid">
+          <div class="kv"><p class="eyebrow">Position (m)</p><div class="v" id="fk-pos"></div></div>
+          <div class="kv"><p class="eyebrow">Quaternion (w x y z)</p><div class="v" id="fk-quat"></div></div>
+          <div class="kv"><p class="eyebrow">RPY (deg, URDF)</p><div class="v" id="fk-rpy"></div></div>
+        </div>
+        <div class="btn-row" style="margin-top:12px">
+          <button type="button" class="btn" id="fk-send">Open rotation in converter</button>
+          <button type="button" class="btn" id="fk-copy">Copy 4x4 transform</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Geometric Jacobian</h2>
+          <span class="small subtle" id="jac-meta"></span>
+        </div>
+        <p class="small subtle" style="margin:-4px 0 10px">Columns are joints from base to tip. Rows are linear (v) then angular (ω) velocity of the tip, in the base frame, per unit joint velocity.</p>
+        <div class="jac-wrap"><table class="jac" id="jac-table"></table></div>
+        <div class="controls-row" style="margin:12px 0 0">
+          <div class="segmented" id="jac-format" role="group" aria-label="Copy format">
+            <button type="button" data-v="numpy" aria-pressed="true">NumPy</button>
+            <button type="button" data-v="matlab" aria-pressed="false">MATLAB</button>
+            <button type="button" data-v="csv" aria-pressed="false">CSV</button>
+          </div>
+          <button type="button" class="btn" id="jac-copy">Copy Jacobian</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= PID ======================= -->
+<section id="tool-pid" data-tool="pid" hidden>
+  <div class="tool-head">
+    <h1>PID tuning</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>Move the gains and watch the system settle, overshoot or shake itself apart. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
+  </div>
+
+  <div class="pid-top">
+    <div class="segmented" id="pid-system" role="group" aria-label="System"></div>
+    <p id="pid-blurb"></p>
+  </div>
+
+  <div class="pid-layout">
+    <div class="pid-stage">
+      <div class="panel">
+        <div class="sim-canvas-wrap" id="pid-stage-wrap">
+          <canvas id="pid-canvas"></canvas>
+          <span class="sim-badge" id="pid-badge"></span>
+          <span class="hint" id="pid-hint"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="metrics">
+          <div class="metric"><p class="eyebrow">Rise time</p><div class="v" id="m-rise"></div></div>
+          <div class="metric"><p class="eyebrow">Overshoot</p><div class="v" id="m-over"></div></div>
+          <div class="metric"><p class="eyebrow">Settling (2%)</p><div class="v" id="m-settle"></div></div>
+          <div class="metric"><p class="eyebrow">Steady error</p><div class="v" id="m-sse"></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Live response</h2>
+          <span class="small subtle">last 10 s</span>
+        </div>
+        <div class="charts-wrap"><canvas id="pid-charts"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="side-section">
+        <div class="gain">
+          <div class="gain-head"><label for="g-kp">Kp <small>proportional</small></label><input class="field" id="g-kp-num" inputmode="decimal" aria-label="Kp value"></div>
+          <input type="range" id="g-kp" step="any">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="g-ki">Ki <small>integral</small></label><input class="field" id="g-ki-num" inputmode="decimal" aria-label="Ki value"></div>
+          <input type="range" id="g-ki" step="any">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="g-kd">Kd <small>derivative</small></label><input class="field" id="g-kd-num" inputmode="decimal" aria-label="Kd value"></div>
+          <input type="range" id="g-kd" step="any">
+        </div>
+        <p class="eyebrow" style="margin-bottom:6px">Presets</p>
+        <div class="preset-row" id="pid-presets"></div>
+      </div>
+
+      <div class="side-section" id="pid-sp-section">
+        <div class="gain">
+          <div class="gain-head"><label for="pid-sp">Setpoint</label><span class="mono small" id="pid-sp-val"></span></div>
+          <input type="range" id="pid-sp" step="any">
+        </div>
+        <label class="check"><input type="checkbox" id="pid-auto"> <span id="pid-auto-label">Step the setpoint every 6 s</span></label>
+      </div>
+
+      <div class="side-section">
+        <div class="btn-row">
+          <button type="button" class="btn solid" id="pid-kick">Kick</button>
+          <button type="button" class="btn" id="pid-pause">Pause</button>
+          <button type="button" class="btn" id="pid-reset">Reset</button>
+        </div>
+        <p class="eyebrow" style="margin:14px 0 6px">Speed</p>
+        <div class="segmented" id="pid-speed" role="group" aria-label="Simulation speed">
+          <button type="button" data-v="0.25" aria-pressed="false">¼×</button>
+          <button type="button" data-v="0.5" aria-pressed="false">½×</button>
+          <button type="button" data-v="1" aria-pressed="true">1×</button>
+        </div>
+      </div>
+
+      <div class="side-section toggle-list">
+        <label class="check"><input type="checkbox" id="pid-aw" checked> Anti-windup</label>
+        <label class="check"><input type="checkbox" id="pid-dmeas" checked> Derivative on measurement</label>
+        <label class="check"><input type="checkbox" id="pid-noise"> Sensor noise</label>
+      </div>
+
+      <div class="side-section">
+        <p class="eyebrow" style="margin-bottom:6px">Controller output, live</p>
+        <div class="terms" id="pid-terms"></div>
+      </div>
+    </div>
+  </div>
+
+    <div class="panel" id="pid-math" style="margin-top:16px">
+      <div class="panel-title"><h2>The math</h2><span class="small subtle">updates live</span></div>
+      <div class="math-grid">
+        <div class="math-block">
+          <p class="eyebrow">Control law</p>
+          <div class="eq" id="math-law"></div>
+          <p class="eq-note" id="math-e"></p>
+          <div id="math-live"></div>
+          <p class="math-status" id="math-status"></p>
+          <p class="small subtle">The <span id="math-out-name"></span> sent to the actuator. <span id="math-units"></span></p>
+        </div>
+        <div class="math-block">
+          <p class="eyebrow">The system</p>
+          <div id="math-plant"></div>
+          <p class="small subtle" id="math-plant-params"></p>
+          <p class="small muted" id="math-plant-note"></p>
+          <p class="small" id="math-plant-live"></p>
+        </div>
+        <div class="math-block">
+          <p class="eyebrow">What the code runs, every step</p>
+          <div id="math-discrete"></div>
+        </div>
+        <div class="math-block">
+          <p class="eyebrow">Closed loop, linearized about the setpoint</p>
+          <div class="eq" id="math-poly-form"></div>
+          <div class="eq live" id="math-poly-live"></div>
+          <div class="eq live" id="math-poles"></div>
+          <p class="small verdict" id="math-verdict"></p>
+          <p class="small" id="math-routh"></p>
+          <p class="small" id="math-extra"></p>
+          <p class="small subtle">A linear prediction: it ignores the actuator limit, large angles, the derivative filter and sampling. When the output saturates, the simulation and the prediction part ways.</p>
+        </div>
+      </div>
+    </div>
+</section>
+
+<!-- ======================= Kalman ======================= -->
+<section id="tool-kalman" data-tool="kalman" hidden>
+  <div class="tool-head">
+    <h1>Kalman filter</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>A cart moves along a track and a noisy sensor reports its position. The filter blends a constant-velocity model with each reading. Set what the filter assumes apart from the true noise and see whether its error band stays honest, or steer the cart yourself and watch a filter that was never told about the maneuver.</p>
+  </div>
+
+  <div class="pid-top">
+    <div class="segmented" id="kf-profile" role="group" aria-label="Motion profile"></div>
+    <p id="kf-blurb"></p>
+  </div>
+
+  <div class="pid-layout">
+    <div class="pid-stage">
+      <div class="panel">
+        <div class="sim-canvas-wrap kf-track-wrap">
+          <canvas id="kf-canvas" aria-label="Cart on a track with the filter's estimate"></canvas>
+          <span class="sim-badge" id="kf-badge"></span>
+        </div>
+        <div class="kf-legend small" aria-hidden="true">
+          <span><i class="kf-swatch kf-sw-truth"></i>truth</span>
+          <span><i class="kf-swatch kf-sw-est"></i>estimate</span>
+          <span><i class="kf-swatch kf-sw-band"></i>±2<span class="kf-sym">σ</span></span>
+          <span><i class="kf-swatch kf-sw-meas"></i>measurement</span>
+          <span class="kf-steer-key" hidden><i class="kf-swatch kf-sw-steer"></i>where you are steering</span>
+          <span><i class="kf-swatch kf-sw-err"></i>error</span>
+          <span><i class="kf-swatch kf-sw-drop"></i>dropout</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="metrics">
+          <div class="metric"><p class="eyebrow">Sensor RMSE</p><div class="v" id="kf-m-meas"></div></div>
+          <div class="metric"><p class="eyebrow">Estimate RMSE</p><div class="v" id="kf-m-est"></div></div>
+          <div class="metric"><p class="eyebrow">Inside ±2<span class="kf-sym">σ</span></p><div class="v" id="kf-m-cov"></div></div>
+          <div class="metric"><p class="eyebrow">Position <span class="kf-sym">σ</span></p><div class="v" id="kf-m-sig"></div></div>
+        </div>
+        <p class="small subtle kf-metrics-note" id="kf-m-note"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Live estimate</h2>
+          <span class="small subtle">last 10 s</span>
+        </div>
+        <div class="charts-wrap"><canvas id="kf-charts" aria-label="Position, error and gain over the last 10 seconds"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="side-section">
+        <!-- Playback first: the run opens at rest, so Play is the first thing to find. -->
+        <div class="btn-row" style="align-items:center">
+          <button type="button" class="btn" id="kf-pause">Pause</button>
+          <button type="button" class="btn" id="kf-reset">Reset</button>
+          <div class="segmented" id="kf-speed" role="group" aria-label="Simulation speed">
+            <button type="button" data-v="0.25" aria-pressed="false">¼×</button>
+            <button type="button" data-v="0.5" aria-pressed="false">½×</button>
+            <button type="button" data-v="1" aria-pressed="true">1×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <p class="eyebrow" style="margin-bottom:8px">Truth and sensors</p>
+        <div class="gain">
+          <div class="gain-head"><label for="kf-rate">Rate <small>Hz</small></label><input class="field" id="kf-rate-num" inputmode="decimal" aria-label="Measurement rate in Hz"></div>
+          <input type="range" id="kf-rate" min="2" max="50" step="1">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="kf-sz">Sensor noise <small>true σ<sub>z</sub>, m</small></label><input class="field" id="kf-sz-num" inputmode="decimal" aria-label="True position noise in meters"></div>
+          <input type="range" id="kf-sz" min="0.05" max="2" step="0.01">
+        </div>
+        <div class="toggle-list">
+          <label class="check"><input type="checkbox" id="kf-fuse"> Fuse velocity sensor</label>
+          <div class="gain kf-sub" id="kf-sv-row" hidden>
+            <div class="gain-head"><label for="kf-sv">Velocity noise <small>σ<sub>v</sub>, m/s</small></label><input class="field" id="kf-sv-num" inputmode="decimal" aria-label="Velocity noise in meters per second"></div>
+            <input type="range" id="kf-sv" min="0.05" max="2" step="0.01">
+            <p class="small subtle">The filter is told this value.</p>
+          </div>
+          <label class="check"><input type="checkbox" id="kf-drop"> Sensor dropout, 3 s of every 10 s</label>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <p class="eyebrow" style="margin-bottom:8px">What the filter assumes</p>
+        <div class="gain">
+          <div class="gain-head"><label for="kf-fsz">Sensor noise <small>σ<sub>z</sub>, m</small></label><input class="field" id="kf-fsz-num" inputmode="decimal" aria-label="Assumed position noise in meters"></div>
+          <input type="range" id="kf-fsz" min="-2.5" max="1" step="any" aria-label="Assumed position noise, log scale">
+          <p class="small subtle">R = <span class="mono" id="kf-r-val"></span> m²</p>
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="kf-fq">Process noise <small>q, m²/s³</small></label><input class="field" id="kf-fq-num" inputmode="decimal" aria-label="Assumed process noise q"></div>
+          <input type="range" id="kf-fq" min="-4" max="2" step="any" aria-label="Assumed process noise, log scale">
+        </div>
+        <p class="eyebrow" style="margin-bottom:6px">Presets</p>
+        <div class="preset-row" id="kf-presets"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="kf-math" style="margin-top:16px">
+    <div class="panel-title"><h2>The math</h2><span class="small subtle" id="kf-math-when">updates live</span></div>
+    <div class="math-grid"></div>
+  </div>
+</section>
+
+<!-- ======================= Localization ======================= -->
+<section id="tool-localization" data-tool="localization" hidden>
+  <div class="tool-head">
+    <h1>Localization</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>A robot works out where it is from noisy odometry and range and bearing to known landmarks, with walls in the way. Five estimators read the same data.</p>
+  </div>
+
+  <div class="pid-top">
+    <div class="loc-algos" id="loc-algos" role="group" aria-label="Algorithms shown">
+      <label class="check loc-algo"><input type="checkbox" data-algo="pf" checked><span class="loc-swatch loc-c-pf"></span>Particle filter</label>
+      <label class="check loc-algo"><input type="checkbox" data-algo="ekf" checked><span class="loc-swatch loc-c-ekf"></span>EKF</label>
+      <label class="check loc-algo"><input type="checkbox" data-algo="ukf" checked><span class="loc-swatch loc-c-ukf"></span>UKF</label>
+      <label class="check loc-algo"><input type="checkbox" data-algo="grid"><span class="loc-swatch loc-c-grid"></span>Grid</label>
+      <label class="check loc-algo"><input type="checkbox" data-algo="dr"><span class="loc-swatch loc-c-dr"></span>Dead reckoning</label>
+    </div>
+    <details class="loc-about loc-algo-about">
+      <summary class="small">How do they differ?</summary>
+      <ul class="small muted">
+        <li><b>Particle filter:</b> many sampled guesses at the pose. Guesses that explain the measurements survive resampling, so it can hold several at once.</li>
+        <li><b>EKF:</b> one Gaussian, updated by linearizing the motion and measurement models.</li>
+        <li><b>UKF:</b> one Gaussian, carried through the models by seven sigma points instead of a linearization.</li>
+        <li><b>Grid:</b> a probability for every 25 cm cell and 22.5° heading. Slow to update, but it can hold any shape of belief.</li>
+        <li><b>Dead reckoning:</b> adds up the odometry and ignores the landmarks.</li>
+      </ul>
+    </details>
+  </div>
+
+  <div class="pid-layout">
+    <div class="pid-stage">
+      <div class="panel">
+        <div class="controls-row loc-edit-row">
+          <span class="small subtle">Click the map to edit</span>
+          <div class="segmented" id="loc-edit" role="group" aria-label="What a click on the map edits">
+            <button type="button" data-v="landmark" aria-pressed="true">Landmark</button>
+            <button type="button" data-v="wall" aria-pressed="false">Wall</button>
+          </div>
+          <button type="button" class="btn" id="loc-clear-walls">Clear walls</button>
+        </div>
+        <div class="sim-canvas-wrap loc-map-wrap" id="loc-map-wrap">
+          <canvas id="loc-map" tabindex="0" aria-label="Map of the robot, landmarks, walls and estimates. Click to add or remove a landmark, or in wall mode drag to draw a wall and click one to remove it. With the map focused, arrow keys or W A S D drive the robot."></canvas>
+          <span class="sim-badge bad" id="loc-badge" hidden>Bumped a wall</span>
+          <span class="hint" id="loc-hint">Click to add or remove a landmark</span>
+        </div>
+        <div class="loc-legend small">
+          <span class="loc-key loc-key-truth"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 8 2 2.5v11z" fill="currentColor"/></svg>True pose</span>
+          <span class="loc-key loc-key-pf"><svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor" opacity="0.6"><rect x="2" y="3" width="3" height="3"/><rect x="9" y="2" width="3" height="3"/><rect x="5" y="9" width="3" height="3"/><rect x="11" y="10" width="3" height="3"/></g></svg>Particles</span>
+          <span class="loc-key loc-key-ekf"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="7" ry="4.5" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.5"/></svg>EKF and UKF 95% ellipses</span>
+          <span class="loc-key loc-key-grid"><svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="1" y="1" width="7" height="7" opacity="0.25"/><rect x="8" y="1" width="7" height="7" opacity="0.6"/><rect x="1" y="8" width="7" height="7" opacity="0.6"/><rect x="8" y="8" width="7" height="7" opacity="0.9"/></g></svg>Grid belief</span>
+          <span class="loc-key loc-key-lm"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0 10 6l6 2-6 2-2 6-2-6-6-2 6-2z" class="loc-star"/></svg>Landmark</span>
+          <span class="loc-key loc-key-wall"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h12" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>Wall</span>
+          <span class="loc-key loc-key-blocked"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h14" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/></svg>View blocked</span>
+        </div>
+        <p class="small muted status" id="loc-status" role="status"></p>
+      </div>
+
+      <div class="panel">
+        <p class="eyebrow" style="margin-bottom:4px">Error now</p>
+        <div class="jac-wrap">
+          <table class="jac loc-table">
+            <thead><tr><th class="row" scope="col">Algorithm</th><th scope="col">Position</th><th scope="col">Heading</th><th class="row" scope="col">Status</th></tr></thead>
+            <tbody id="loc-table"></tbody>
+          </table>
+        </div>
+        <div class="loc-tiles">
+          <div class="metric"><p class="eyebrow">Neff / N</p><div class="v" id="loc-m-neff"></div><div class="small subtle" id="loc-m-neff-sub"></div></div>
+          <div class="metric"><p class="eyebrow">In view / in range</p><div class="v" id="loc-m-vis"></div><div class="small subtle" id="loc-m-vis-sub"></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Position error</h2>
+          <span class="small subtle">last 20 s</span>
+        </div>
+        <div class="loc-legend small loc-chart-legend" id="loc-chart-legend"></div>
+        <div class="charts-wrap loc-chart"><canvas id="loc-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="side-section">
+        <div class="gain">
+          <div class="gain-head"><label for="loc-n">Particles <small>N</small></label><input class="field" id="loc-n-num" inputmode="numeric" aria-label="Number of particles"></div>
+          <input type="range" id="loc-n">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="loc-odom">Odometry noise <small>scale</small></label><input class="field" id="loc-odom-num" inputmode="decimal" aria-label="Odometry noise scale"></div>
+          <input type="range" id="loc-odom">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="loc-sensor">Sensor noise <small>range σ, m</small></label><input class="field" id="loc-sensor-num" inputmode="decimal" aria-label="Sensor range noise in meters"></div>
+          <input type="range" id="loc-sensor">
+          <p class="small subtle" id="loc-sensor-note"></p>
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="loc-range">Max range <small>m</small></label><input class="field" id="loc-range-num" inputmode="decimal" aria-label="Sensor max range in meters"></div>
+          <input type="range" id="loc-range">
+        </div>
+      </div>
+
+      <div class="side-section">
+        <div class="btn-row">
+          <button type="button" class="btn teal" id="loc-restart" title="Robot back to its start, the default walls back in place, every estimator told where it is. Your landmarks stay.">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.6-3.7M3 2.5v2.8h2.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Start over
+          </button>
+          <button type="button" class="btn" id="loc-pause">Pause</button>
+          <button type="button" class="btn" id="loc-kidnap">Kidnap robot</button>
+          <button type="button" class="btn" id="loc-reset">Reset filters</button>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <label class="check"><input type="checkbox" id="loc-auto" checked> Autopilot</label>
+        <p class="small subtle" style="margin:6px 0 0">Plans around walls with A* and loops through eight waypoints.</p>
+        <div class="loc-drive">
+          <p class="eyebrow">Drive</p>
+          <div class="loc-pad" id="loc-pad">
+            <button type="button" class="btn" data-drive="fwd" aria-label="Forward">↑</button>
+            <button type="button" class="btn" data-drive="left" aria-label="Turn left">←</button>
+            <button type="button" class="btn" data-drive="back" aria-label="Back">↓</button>
+            <button type="button" class="btn" data-drive="right" aria-label="Turn right">→</button>
+          </div>
+          <p class="small subtle">Hold a button, or click the map and use the arrow keys or WASD. Driving turns the autopilot off.</p>
+        </div>
+      </div>
+
+      <div class="side-section" id="loc-zoom-panel">
+        <div class="panel-title" style="margin-bottom:8px"><h2>Around the robot</h2><span class="small subtle" id="loc-zoom-scale"></span></div>
+        <canvas id="loc-inset" class="loc-inset" aria-label="Zoomed view centered on the true robot, showing each estimate as an offset from it"></canvas>
+        <details class="loc-about">
+          <summary class="small">What am I looking at?</summary>
+          <p class="small muted">The true robot sits at the center. Each estimate is drawn as an offset from it, with a trail of the last 8 seconds, so you can see how each one wanders around the robot. The scale adapts: a few centimeters while tracking, meters after a kidnap.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="loc-math" style="margin-top:16px">
+    <div class="panel-title"><h2>The math</h2><span class="small subtle">updates live</span></div>
+    <div class="math-grid">
+      <div class="math-block">
+        <p class="eyebrow">Motion model</p>
+        <div id="loc-math-motion"></div>
+        <div class="eq live" id="loc-math-motion-live"></div>
+        <p class="small subtle">The estimators get the commanded v and ω. The real robot executes them with this noise added, and a wall can stop it while the command says it moved.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">Measurement model</p>
+        <div id="loc-math-meas"></div>
+        <div class="eq live" id="loc-math-meas-live"></div>
+        <p class="small subtle">Only landmarks within the max range are measured, and only if the straight line from the robot to the landmark crosses no wall. Each measurement says which landmark it came from.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">Dead reckoning</p>
+        <div id="loc-math-dr"></div>
+        <div class="eq live" id="loc-math-dr-live"></div>
+        <p class="small subtle">No measurement step. Every bit of slip and every bump stays in the estimate for good, so the error only grows.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">Particle filter, every step</p>
+        <div class="loc-steps" id="loc-math-pf"></div>
+        <div class="eq live" id="loc-math-pf-live"></div>
+        <p class="small verdict" id="loc-math-pf-verdict"></p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">Grid Bayes filter</p>
+        <div class="loc-steps" id="loc-math-grid"></div>
+        <div class="eq live" id="loc-math-grid-live"></div>
+        <p class="small subtle">Cells inside walls are held at zero. Motion that would carry belief into a wall leaves it where it was.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">EKF predict</p>
+        <div id="loc-math-predict"></div>
+        <div class="eq live" id="loc-math-predict-live"></div>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">EKF update, per landmark</p>
+        <div id="loc-math-update"></div>
+        <div class="eq live" id="loc-math-update-live"></div>
+        <p class="small verdict" id="loc-math-update-verdict"></p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">EKF covariance, now</p>
+        <div class="eq live" id="loc-math-cov-live"></div>
+        <p class="small subtle" id="loc-math-cov-note"></p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">UKF</p>
+        <div class="loc-steps" id="loc-math-ukf"></div>
+        <div class="eq live" id="loc-math-ukf-live"></div>
+        <p class="small verdict" id="loc-math-ukf-verdict"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Planning ======================= -->
+<section id="tool-planning" data-tool="planning" hidden>
+  <div class="tool-head">
+    <h1>Motion planning</h1>
+    <span class="swoosh" aria-hidden="true"></span>
+    <p>Draw walls, move the start and goal, and watch each planner search the grid. The table runs every planner on the same map.</p>
+  </div>
+
+  <div class="pid-top">
+    <div class="segmented" id="plan-algo" role="group" aria-label="Algorithm"></div>
+    <p id="plan-blurb"></p>
+  </div>
+
+  <div class="pid-layout">
+    <div class="pid-stage">
+      <div class="panel">
+        <div class="map-strip" id="plan-maps" role="group" aria-label="Maps"></div>
+        <div class="sim-canvas-wrap" id="plan-stage-wrap" style="aspect-ratio: 61 / 41">
+          <canvas id="plan-canvas" role="img" aria-label="Occupancy grid. Drag to draw walls, drag the start or goal to move it."></canvas>
+          <span class="sim-badge" id="plan-badge"></span>
+        </div>
+        <div class="controls-row" style="margin:12px 0 0">
+          <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;border-radius:50%;background:var(--plot-d)"></span>Start</span>
+          <span class="chip"><span style="display:inline-block;width:10px;height:10px;margin-right:7px;transform:rotate(45deg);background:var(--plot-error)"></span>Goal</span>
+          <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;background:var(--solid)"></span>Wall</span>
+          <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;background:color-mix(in oklab, var(--accent) 20%, var(--accent-soft));border:1px solid var(--line)"></span>Closed</span>
+          <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;background:color-mix(in oklab, var(--highlight) 50%, var(--panel))"></span>Open</span>
+          <span class="chip"><span style="display:inline-block;width:14px;height:4px;margin-right:6px;border-radius:2px;background:var(--accent)"></span>Path</span>
+          <span class="chip"><span style="display:inline-block;width:14px;height:1.5px;margin-right:6px;background:var(--line-strong)"></span>Tree</span>
+        </div>
+        <p class="small subtle" style="margin:8px 0 0">Drag on the grid to draw walls. Hold Shift or use the right button to erase. Drag the start or goal to move it.</p>
+      </div>
+
+      <div class="panel">
+        <div class="metrics">
+          <div class="metric"><p class="eyebrow" id="plan-m-work-label">Nodes expanded</p><div class="v" id="plan-m-work"></div></div>
+          <div class="metric"><p class="eyebrow" id="plan-m-frontier-label">Frontier size</p><div class="v" id="plan-m-frontier"></div></div>
+          <div class="metric"><p class="eyebrow">Path length</p><div class="v" id="plan-m-length"></div></div>
+          <div class="metric"><p class="eyebrow">Path found</p><div class="v" id="plan-m-found"></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Every planner on this map</h2>
+          <span class="small subtle">updates when the map changes</span>
+        </div>
+        <div class="jac-wrap">
+          <table class="jac">
+            <thead>
+              <tr>
+                <th class="row" scope="col">Algorithm</th>
+                <th scope="col">Expanded</th>
+                <th scope="col">Path length</th>
+                <th scope="col">vs Dijkstra</th>
+                <th scope="col">Optimal</th>
+                <th scope="col">ms</th>
+              </tr>
+            </thead>
+            <tbody id="plan-compare-body"></tbody>
+          </table>
+        </div>
+        <p class="small subtle" style="margin:10px 0 0">Grid planners use the moves and heuristic set on the right. Optimal means the same length as Dijkstra. RRT and RRT* show iterations used, with seed 1; their paths are not tied to grid moves, so they can come in under 1.000.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="side-section">
+        <div class="btn-row">
+          <button type="button" class="btn solid" id="plan-run">Run</button>
+          <button type="button" class="btn" id="plan-step">Step</button>
+          <button type="button" class="btn" id="plan-pause">Pause</button>
+          <button type="button" class="btn" id="plan-reset">Reset</button>
+        </div>
+        <div class="gain" style="margin:14px 0 0">
+          <div class="gain-head"><label for="plan-speed">Speed</label><span class="small"><span class="mono" id="plan-speed-num"></span> <span id="plan-speed-unit"></span></span></div>
+          <input type="range" id="plan-speed" min="0" step="1">
+        </div>
+      </div>
+
+      <div class="side-section">
+        <p class="eyebrow" style="margin-bottom:6px">Edit</p>
+        <div class="segmented" id="plan-mode" role="group" aria-label="Edit mode">
+          <button type="button" data-v="draw" aria-pressed="true">Draw</button>
+          <button type="button" data-v="erase" aria-pressed="false">Erase</button>
+        </div>
+        <div class="preset-row" id="plan-presets" style="margin-top:10px"></div>
+      </div>
+
+      <div class="side-section" id="plan-grid-opts">
+        <p class="eyebrow" style="margin-bottom:6px">Moves</p>
+        <div class="segmented" id="plan-conn" role="group" aria-label="Connectivity">
+          <button type="button" data-v="4" aria-pressed="false">4-connected</button>
+          <button type="button" data-v="8" aria-pressed="true">8-connected</button>
+        </div>
+        <p class="eyebrow" style="margin:14px 0 6px"><label for="plan-heuristic">Heuristic</label></p>
+        <div class="select-wrap" style="width:100%"><select class="field" id="plan-heuristic"></select></div>
+        <div class="gain" style="margin:14px 0 0">
+          <div class="gain-head"><label for="plan-weight">ε <small>weight on h, Weighted A*</small></label><input class="field" id="plan-weight-num" inputmode="decimal" aria-label="Weight value"></div>
+          <input type="range" id="plan-weight" min="1" max="5" step="0.1">
+        </div>
+      </div>
+
+      <div class="side-section" id="plan-tree-opts" hidden>
+        <div class="gain">
+          <div class="gain-head"><label for="plan-stepsize">Step size <small>cells</small></label><input class="field" id="plan-stepsize-num" inputmode="decimal" aria-label="Step size value"></div>
+          <input type="range" id="plan-stepsize" min="0.5" max="8" step="0.5">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="plan-bias">Goal bias <small>chance to sample the goal</small></label><input class="field" id="plan-bias-num" inputmode="decimal" aria-label="Goal bias value"></div>
+          <input type="range" id="plan-bias" min="0" max="0.5" step="0.01">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="plan-budget">Budget <small>iterations</small></label><input class="field" id="plan-budget-num" inputmode="decimal" aria-label="Iteration budget value"></div>
+          <input type="range" id="plan-budget" min="100" max="5000" step="100">
+        </div>
+        <p class="small subtle" style="margin:0">Each run draws new samples. Narrow corridors, like the maze, need a small step.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="plan-math" style="margin-top:16px">
+    <div class="panel-title"><h2>The math</h2><span class="small subtle">updates live</span></div>
+    <div class="math-grid">
+      <div class="math-block">
+        <p class="eyebrow">Priority</p>
+        <div class="eq" id="plan-math-f"></div>
+        <p class="small subtle" id="plan-math-defs"></p>
+        <div class="small muted" id="plan-math-algos" style="display:grid;gap:2px"></div>
+        <div class="eq live" id="plan-math-live"></div>
+      </div>
+          <div class="math-block">
+        <p class="eyebrow">What the result guarantees</p>
+        <div class="small" id="plan-math-guarantee"></div>
+        <p class="small verdict" id="plan-math-check" hidden></p>
+      </div>
+          <div class="math-block">
+        <p class="eyebrow">Heuristic</p>
+        <div class="eq" id="plan-math-h"></div>
+        <p class="small subtle" id="plan-math-adm"></p>
+        <p class="small verdict" id="plan-math-hverdict"></p>
+        <div class="eq live" id="plan-math-hlive"></div>
+      </div>
+          <div class="math-block">
+        <p class="eyebrow">RRT* rewiring radius</p>
+        <div class="eq" id="plan-math-r"></div>
+        <div class="eq" id="plan-math-gamma"></div>
+        <p class="small subtle">Each new node takes the cheapest parent within <i>r</i>, then any neighbor within <i>r</i> that would be cheaper through the new node switches to it. Edges are checked cell by cell, so no corner is clipped.</p>
+        <div class="eq live" id="plan-math-rlive"></div>
+        <p class="small subtle" id="plan-math-rnote"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="row" aria-hidden="true"><span class="sparkle"></span><span class="starburst" style="color:var(--accent);width:26px;height:26px"></span><span class="sparkle"></span></div>
+  <div>Everything runs in your browser. No accounts, nothing uploaded.</div>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

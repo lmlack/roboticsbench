@@ -1,0 +1,36 @@
+/* Kalman filter tool. Only what the shared classes do not cover. */
+
+/* The track is one-dimensional, so the stage is wider than the PID one. */
+.sim-canvas-wrap.kf-track-wrap { aspect-ratio: 16 / 7; }
+.sim-canvas-wrap.kf-track-wrap canvas { cursor: default; }
+
+/* "You steer" turns the track into a drag surface. The wrap clips, so the
+   focus ring has to sit inside the canvas to be seen at all. */
+.kf-track-wrap.steerable canvas { cursor: grab; }
+.kf-track-wrap.steerable canvas:active { cursor: grabbing; }
+.kf-track-wrap.steerable canvas:focus-visible { outline-offset: -3px; }
+
+/* Shared .eq shrinks sub and sup to 0.75em, under the 15px floor. */
+#tool-kalman sub, #tool-kalman sup { font-size: var(--text-sm); line-height: 1; }
+
+/* Eyebrows are uppercase, which would turn σ into Σ. */
+.kf-sym { text-transform: none; }
+
+.kf-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: var(--fg-muted); }
+.kf-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.kf-swatch { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.kf-sw-truth { background: var(--plot-setpoint); }
+.kf-sw-est { background: var(--plot-measured); }
+.kf-sw-band { height: 12px; background: color-mix(in oklab, var(--plot-measured) 22%, transparent); border: 1px solid var(--plot-measured); }
+.kf-sw-meas { width: 9px; height: 9px; border-radius: 50%; background: var(--plot-control); }
+.kf-sw-steer { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.kf-sw-err { background: var(--plot-error); }
+.kf-sw-drop { height: 12px; background: var(--warn-bg); border: 1px solid var(--warn-fg); }
+
+.kf-metrics-note { margin: 10px 0 0; }
+.kf-sub { margin: 0 0 4px 24px; }
+#tool-kalman .gain p.small { margin: 0; }
+
+@media (max-width: 640px) {
+  .sim-canvas-wrap.kf-track-wrap { aspect-ratio: 16 / 10; }
+}

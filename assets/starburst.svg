@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100">
+  <!-- Atomic-age starburst: long and short rays with a dot on each long tip. -->
+  <g fill="#000">
+    <circle r="7"/>
+    <g id="long"><path d="M-2.2 -8 L0 -44 L2.2 -8 Z"/><circle cy="-46" r="3.2"/></g>
+    <use href="#long" transform="rotate(90)"/><use href="#long" transform="rotate(180)"/><use href="#long" transform="rotate(270)"/>
+    <g id="short"><path d="M-1.6 -7 L0 -27 L1.6 -7 Z"/></g>
+    <use href="#short" transform="rotate(45)"/><use href="#short" transform="rotate(135)"/><use href="#short" transform="rotate(225)"/><use href="#short" transform="rotate(315)"/>
+  </g>
+</svg>
