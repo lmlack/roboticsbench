@@ -192,7 +192,7 @@ a { color: var(--accent); }
 .brand .wordmark span { color: var(--accent); }
 
 /* Tabs as little roadside signs: slanted pills, the active one lit coral. */
-.tabs { display: flex; gap: 6px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; }
+.tabs { display: flex; gap: 6px; margin: 0 auto; overflow-x: auto; scrollbar-width: none; padding: 4px 2px; min-width: 0; }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs a {
   display: inline-block; padding: 6px 14px; border-radius: 999px;
@@ -215,6 +215,10 @@ a { color: var(--accent); }
 .segmented button:hover { color: var(--fg); }
 .segmented button[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); font-weight: 600; }
 .segmented svg { width: 16px; height: 16px; }
+.theme-toggle { flex: none; flex-wrap: nowrap; }
+/* A pill cannot hold two rows: wrapped buttons spill past its rounded ends.
+   Groups too long for a phone's width say so with .seg-grid and become an
+   even grid in a rounded box there instead (see the 540px query below). */
 
 main { max-width: 1240px; margin: 0 auto; padding: 36px 24px 72px; }
 
@@ -509,23 +513,17 @@ table.jac tr:last-child td { border-bottom: 0; }
 .map-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--fg); font-weight: 600; }
 .map-card canvas { width: 92px; height: 62px; image-rendering: pixelated; border-radius: 6px; }
 
-/* "Your map" leads the strip and stays put while the presets scroll under it,
-   so the way in to your own file is never off the edge. Every other card is a
-   picture of a map; this one is the only thing in the strip that does
-   something, so it is the only one that carries the accent color. */
+/* "Your map" leads the strip and scrolls away with it like any other card.
+   Every other card is a picture of a map; this one is the only thing in the
+   strip that does something, so it is the only one that carries the accent
+   color. */
 .map-card-upload {
-  position: sticky; left: 0; z-index: 1;
   border-style: dashed; border-color: var(--accent);
   background: var(--accent-soft); color: var(--accent);
 }
 .map-card-upload:hover { border-color: var(--accent); color: var(--accent); }
 .map-card-upload[aria-pressed="true"] { border-style: solid; background: var(--panel); }
 .map-card-upload > span:last-child { font-weight: 600; }
-.map-card-upload::after {
-  content: ""; position: absolute; top: 0; right: -10px; bottom: 0; width: 10px;
-  background: linear-gradient(to right, var(--accent-soft), transparent); pointer-events: none;
-}
-.map-card-upload[aria-pressed="true"]::after { background: linear-gradient(to right, var(--panel), transparent); }
 .map-card-empty {
   display: grid; place-items: center; width: 92px; height: 62px; border-radius: 6px;
   border: 1.5px dashed var(--accent); color: var(--accent);
@@ -602,6 +600,16 @@ table.jac tr:last-child td { border-bottom: 0; }
   .rot-preview { position: static; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .math-grid { columns: 1; }
+}
+@media (max-width: 540px) {
+  .segmented.seg-grid {
+    display: grid; grid-template-columns: repeat(var(--seg-cols, 2), minmax(0, 1fr));
+    width: 100%; gap: 2px; border-radius: 18px;
+  }
+  .segmented.seg-grid button { justify-content: center; padding: 0 6px; }
+  /* Seven planners: four on top, then Weighted A* across two cells beside RRT and RRT*. */
+  #plan-algo { --seg-cols: 4; }
+  #plan-algo [data-v="wastar"] { grid-column: span 2; }
 }
 @media (max-width: 640px) {
   main { padding: 24px 16px 48px; }
