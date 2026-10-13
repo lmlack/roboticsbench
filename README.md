@@ -48,7 +48,7 @@ Lift the simulations into your own page with nothing but the notice to carry.
 If you reuse the explanations, in a course page or a set of slides, credit them:
 
 ```
-roboticsbench by lmlack, CC BY 4.0, https://gwark.dev/roboticsbench/
+roboticsbench by lmlack, CC BY 4.0, https://roboticsbench.gwark.dev/
 ```
 
 The gwark mark (`gwark-mark.svg`) is brand identity, not content, and is

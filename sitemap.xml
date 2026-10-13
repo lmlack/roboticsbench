@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One page: the app is a single document. No lastmod; a date nobody
+     maintains is worse than no date. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://roboticsbench.gwark.dev/</loc>
+    <changefreq>monthly</changefreq>
+  </url>
+</urlset>
