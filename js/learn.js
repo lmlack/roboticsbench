@@ -746,7 +746,7 @@ export function start(root) {
     // On a phone the lesson name drops out of the Next label (CSS), or the
     // button runs past the card. The last one finishes the class and goes home.
     if (index === LESSONS.length - 1) {
-      next.textContent = "Finish the class";
+      next.textContent = "Finished!";
       next.title = "Back to the roboticsbench home page";
     } else {
       next.replaceChildren("Next", el("span", { class: "learn-next-name", text: `: ${LESSONS[index + 1].short}` }), " →");
