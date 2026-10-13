@@ -3,6 +3,7 @@
 // page is static and has no module.
 
 const TOOLS = {
+  learn: () => import("./learn.js"),
   rotations: () => import("./rotations.js"),
   urdf: () => import("./urdf.js"),
   pid: () => import("./pid.js"),

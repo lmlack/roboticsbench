@@ -2,6 +2,7 @@
 
 Robotics tools that run in the browser. No build step, no accounts, nothing uploaded.
 
+- **Learn**: a six-step class on robot arm basics, each step with an arm to move and its math updating live. Frames and transforms, forward and inverse kinematics on a 2-link arm (with both elbow solutions), rotations and SO(3), forward kinematics of a 6-axis arm, and numerical IK by damped least squares with the Jacobian and manipulability, including what happens at a singularity.
 - **Rotation converter**: quaternion (either order), Euler angles (all 12 orders, intrinsic or extrinsic, deg or rad), axis-angle, rotation vector and matrix, kept in sync, with a 3D preview, paste detection (tf2_echo, ROS messages, NumPy, Eigen) and copyable code for SciPy, Eigen and ROS.
 - **URDF viewer**: samples built in, or open a URDF with its meshes (STL, DAE, OBJ) by file, folder or drag and drop. Joint sliders, forward kinematics between any two links, and the geometric Jacobian with manipulability.
 - **PID tuning**: drone altitude, a robot arm against gravity, and an inverted pendulum, simulated live, with live charts of response, error and output, and a math panel showing the control law, the plant, and the closed-loop poles.
