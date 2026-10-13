@@ -221,10 +221,9 @@ export function start(root) {
     mapChanged(true);
   }
   // ---- Your own map ----
-  // The card leads the strip and stays pinned to its left edge while the
-  // presets scroll past, because a card at the far end of twelve is a card
-  // nobody finds. Before a file is in it, it is the button that opens the
-  // picker; after, it behaves like any other map.
+  // The card leads the strip, because a card at the far end of twelve is a
+  // card nobody finds. Before a file is in it, it is the button that opens
+  // the picker; after, it behaves like any other map.
   const fileInput = $("#plan-map-file");
   const mapStatus = $("#plan-map-status");
   const uploadCard = {};

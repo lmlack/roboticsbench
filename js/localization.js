@@ -297,9 +297,15 @@ export function start(root) {
     return { ctx, w: s.w, h: s.h };
   };
 
-  /** World meters to canvas pixels, fitted and centered, y up. */
+  /**
+   * World meters to canvas pixels, fitted and centered, y up. The world is
+   * kept MAP_INSET px clear of the canvas edge: the wrap has the same aspect
+   * as the world, so without it the frame lands on the wrap's rounded,
+   * clipped edge and doubles up with its border.
+   */
+  const MAP_INSET = 8;
   function geom(w, h) {
-    const s = Math.min(w / WORLD.w, h / WORLD.h);
+    const s = Math.min((w - 2 * MAP_INSET) / WORLD.w, (h - 2 * MAP_INSET) / WORLD.h);
     const ox = (w - s * WORLD.w) / 2, oy = (h - s * WORLD.h) / 2;
     return {
       s,
@@ -413,6 +419,12 @@ export function start(root) {
     ctx.strokeStyle = colors.lineStrong;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(g.X(0) + 0.75, g.Y(WORLD.h) + 0.75, WORLD.w * g.s - 1.5, WORLD.h * g.s - 1.5);
+    // Everything else stays inside the world: the sensor range arc and wall
+    // caps would otherwise spill into the margin around it.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(g.X(0), g.Y(WORLD.h), WORLD.w * g.s, WORLD.h * g.s);
+    ctx.clip();
 
     // Wind sits behind everything: it is the stage, not an actor.
     if (sim.params.wind > 0) drawWind(ctx, g);
@@ -508,6 +520,7 @@ export function start(root) {
       if (on(a.key)) robot(ctx, g, est[a.key], 1.3, colors[a.key], false, a.dashed);
     }
     robot(ctx, g, tr, 1, colors.fg, true);
+    ctx.restore();
   }
 
   function ray(ctx, g, tr, js, color, alpha, dash) {
