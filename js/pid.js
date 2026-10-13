@@ -286,7 +286,8 @@ export function start(root) {
       ctx.moveTo(48, y);
       ctx.lineTo(w - 16, y);
       ctx.stroke();
-      if (a % 2 === 0 && a > 0) ctx.fillText(`${a} m`, 40, y);
+      // The live altitude badge sits over the top-left corner; a label under it is unreadable.
+      if (a % 2 === 0 && a > 0 && y > 44) ctx.fillText(`${a} m`, 40, y);
     }
     // Ground
     ctx.fillStyle = colors.lineStrong;
@@ -703,7 +704,7 @@ export function start(root) {
       chartRange.response = ease(chartRange.response, { lo: lo - pad, hi: hi + pad });
       const r = chartRange.response;
       panel(ctx, panels[0], left, right, r, sys.unit, "Response");
-      legend(ctx, panels[0], left, [["measured", colors.measured, false], ["setpoint", colors.setpoint, true]]);
+      legend(ctx, panels[0], left, right, "Response", sys.unit, [["measured", colors.measured, false], ["setpoint", colors.setpoint, true]]);
       series(ctx, data, (p) => disp(p.sp), panels[0], r, tx, colors.setpoint, 1.5, true);
       series(ctx, data, (p) => disp(p.y), panels[0], r, tx, colors.measured, 2.5);
     }
@@ -715,7 +716,15 @@ export function start(root) {
       m = Math.max(m * 1.15, minSpan / 4);
       chartRange.error = ease(chartRange.error, { lo: -m, hi: m });
       const r = chartRange.error;
-      panel(ctx, panels[1], left, right, r, sys.unit, "Error (setpoint − measured)", true);
+      // On a narrow chart the full title runs into the live value at the
+      // right, so it falls back to the short one.
+      const last = data.length ? disp(data[data.length - 1].e) : null;
+      const valueText = last === null ? "" : `${last >= 0 ? "+" : ""}${fmt(last, sys.unit === "m" ? 3 : 2)} ${sys.unit}`;
+      ctx.font = "600 15px Hyper, system-ui, sans-serif";
+      const room = right - left - ctx.measureText(valueText).width - 16;
+      const fullTitle = "Error (setpoint − measured)";
+      const fits = ctx.measureText(fullTitle).width + ctx.measureText(` ${sys.unit}`).width + 8 <= room;
+      panel(ctx, panels[1], left, right, r, sys.unit, fits ? fullTitle : "Error", true);
       const yz = mapY(0, panels[1], r);
       ctx.save();
       ctx.beginPath();
@@ -735,12 +744,11 @@ export function start(root) {
       ctx.restore();
       series(ctx, data, (p) => disp(p.e), panels[1], r, tx, colors.error, 2.5);
       if (data.length) {
-        const e = disp(data[data.length - 1].e);
         ctx.fillStyle = colors.error;
         ctx.textAlign = "right";
         ctx.textBaseline = "bottom";
         ctx.font = "600 15px Hyper, system-ui, sans-serif";
-        ctx.fillText(`${e >= 0 ? "+" : ""}${fmt(e, sys.unit === "m" ? 3 : 2)} ${sys.unit}`, right, panels[1].y0 - 4);
+        ctx.fillText(valueText, right, panels[1].y0 - 4);
         ctx.font = "15px Hyper, system-ui, sans-serif";
       }
     }
@@ -818,10 +826,19 @@ export function start(root) {
     ctx.fillText(unit, left + tw + 8, p.y0 - 4);
   }
 
-  function legend(ctx, p, left, items) {
+  /**
+   * Line legend at the right end of a panel's title row. It used to start at
+   * a fixed offset, which on a phone put it past the edge of the chart; now
+   * it hugs the right edge and is left out when it would hit the title.
+   */
+  function legend(ctx, p, left, right, title, unit, items) {
     ctx.save();
+    ctx.font = "600 15px Hyper, system-ui, sans-serif";
+    const titleEnd = left + ctx.measureText(title).width + 8 + ctx.measureText(unit).width + 16;
     ctx.font = "15px Hyper, system-ui, sans-serif";
-    let x = left + 260;
+    const width = items.reduce((sum, [label]) => sum + 24 + ctx.measureText(label).width + 18, 0) - 18;
+    let x = right - width;
+    if (x < titleEnd) { ctx.restore(); return; }
     ctx.textBaseline = "bottom";
     ctx.textAlign = "left";
     for (const [label, color, dashed] of items) {

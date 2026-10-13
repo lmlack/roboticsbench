@@ -488,6 +488,8 @@ table.jac tr:last-child td { border-bottom: 0; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .toggle-list { display: grid; gap: 8px; }
 .side-section + .side-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+/* Play/Run controls moved under the canvas on a single-column layout. */
+.side-section.docked { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .metric .v { font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 600; }
