@@ -689,7 +689,15 @@ export function start(root) {
     return b;
   });
   $("#learn-prev").addEventListener("click", () => go(index - 1));
-  $("#learn-next").addEventListener("click", () => go(index + 1));
+  // The last lesson's button finishes the class and returns to the home page.
+  $("#learn-next").addEventListener("click", () => {
+    if (index === LESSONS.length - 1) {
+      location.hash = "#";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      go(index + 1);
+    }
+  });
 
   function go(i) {
     if (i < 0 || i >= LESSONS.length) return;
@@ -712,8 +720,7 @@ export function start(root) {
     $("#learn-body").innerHTML = l.body();
     $("#learn-prev").disabled = index === 0;
     const next = $("#learn-next");
-    next.disabled = index === LESSONS.length - 1;
-    next.textContent = index === LESSONS.length - 1 ? "That's the class" : `Next: ${LESSONS[index + 1].short} →`;
+    next.textContent = index === LESSONS.length - 1 ? "Finish: back to roboticsbench →" : `Next: ${LESSONS[index + 1].short} →`;
     controls.replaceChildren(...l.controls());
     wrap2d.hidden = l.dim !== "2d";
     wrap3d.hidden = l.dim !== "3d";
