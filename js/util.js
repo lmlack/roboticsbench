@@ -110,6 +110,25 @@ export function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+/**
+ * On a single-column layout, moves `node` to the end of `target`, and puts it
+ * back where it came from when the layout widens again. Used to bring a
+ * simulation's Play/Run controls up beside the canvas on a phone, where the
+ * settings panel otherwise stacks far below it.
+ */
+export function dockWhenNarrow(node, target, query = "(max-width: 960px)") {
+  const home = node.parentNode;
+  const next = node.nextSibling;
+  const mq = window.matchMedia(query);
+  const place = () => {
+    node.classList.toggle("docked", mq.matches);
+    if (mq.matches) target.append(node);
+    else home.insertBefore(node, next);
+  };
+  mq.addEventListener("change", place);
+  place();
+}
+
 /** Wires a .segmented group: returns get/set, calls onChange with the value. */
 export function segmented(root, onChange) {
   const buttons = [...root.querySelectorAll("button[data-v]")];

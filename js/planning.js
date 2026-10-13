@@ -8,7 +8,7 @@ import {
   compareAll, defaultHeuristic, formatMap, freeCount, heuristicProps, makePreset, parseMap, planner,
   rrtGamma, rrtRadius,
 } from "./planning-sim.js";
-import { copyText, cssVar, el, evalNumber, fmt, segmented } from "./util.js";
+import { copyText, cssVar, dockWhenNarrow, el, evalNumber, fmt, segmented } from "./util.js";
 import { inl, num, tex } from "./tex.js";
 
 // Expansions (or iterations) per frame. Fractions skip frames.
@@ -20,6 +20,9 @@ const COMPARE_SEED = 1;
 export function start(root) {
   const $ = (sel) => root.querySelector(sel);
   const wrap = $("#plan-stage-wrap");
+  // On a phone, Run and the timeline sit right under the grid, not past the
+  // stats and the comparison table.
+  dockWhenNarrow($("#plan-run").closest(".side-section"), wrap.closest(".panel"));
   let map = makePreset("clutter", 1);
   const opt = { algo: "astar", conn: 8, heuristic: "octile", weight: 2, step: 3, goalBias: 0.05, budget: 3000 };
   let speedIdx = 6;

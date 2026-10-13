@@ -743,7 +743,15 @@ export function start(root) {
     $("#learn-body").innerHTML = l.body();
     $("#learn-prev").disabled = index === 0;
     const next = $("#learn-next");
-    next.textContent = index === LESSONS.length - 1 ? "Finish: back to roboticsbench →" : `Next: ${LESSONS[index + 1].short} →`;
+    // On a phone the lesson name drops out of the Next label (CSS), or the
+    // button runs past the card. The last one finishes the class and goes home.
+    if (index === LESSONS.length - 1) {
+      next.textContent = "Finish the class";
+      next.title = "Back to the roboticsbench home page";
+    } else {
+      next.replaceChildren("Next", el("span", { class: "learn-next-name", text: `: ${LESSONS[index + 1].short}` }), " →");
+      next.removeAttribute("title");
+    }
     controls.replaceChildren(...l.controls());
     wrap2d.hidden = l.dim !== "2d";
     wrap3d.hidden = l.dim !== "3d";

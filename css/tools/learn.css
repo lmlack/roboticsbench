@@ -76,4 +76,5 @@
   /* Six titles do not fit a phone; the numbers do, and the panel says the name. */
   .learn-steps .label { display: none; }
   .learn-sliders { grid-template-columns: minmax(0, 1fr); }
+  .learn-next-name { display: none; }
 }

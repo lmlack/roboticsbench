@@ -7,7 +7,7 @@
 import {
   GRID, HISTORY_SECONDS, Localization, RECOVERED, WALL_T, WORLD, distToSegment,
 } from "./localization-sim.js";
-import { cssVar, evalNumber, fmt, segmented } from "./util.js";
+import { cssVar, dockWhenNarrow, evalNumber, fmt, segmented } from "./util.js";
 import { createMathPanel } from "./localization-math.js";
 
 const DEG = Math.PI / 180;
@@ -40,6 +40,9 @@ export function start(root) {
   // A fresh seed per visit; the tests pin theirs.
   const sim = new Localization({ seed: (Math.random() * 2 ** 32) >>> 0 });
   const shown = new Set();
+  // On a phone, Start over / Pause / Kidnap sit right under the map, not
+  // past the table, the chart and every slider.
+  dockWhenNarrow($("#loc-restart").closest(".side-section"), $("#loc-map-wrap").closest(".panel"));
   // Opens at rest: the first frame is drawn, nothing moves until Play.
   let paused = true;
   let active = false;
