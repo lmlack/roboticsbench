@@ -355,7 +355,9 @@ export function start(root) {
       body: () => `
         <p>A position only means something <b>relative to a frame</b>: an origin plus a set of axes. The <b>world frame W</b> is fixed to the room. The robot's <b>base frame B</b> sits wherever the robot was bolted down, turned however it was installed.</p>
         <p>Move the base. The tool tip <b>P</b> does not move relative to the base, so its base coordinates ${inl("p_B")} stay the same, but its world coordinates ${inl("p_W")} change. Same point, two addresses.</p>
-        <p>To convert, turn by the base's angle, then add where the base is. A <b>transform</b> ${inl("T")} packs both steps into one matrix; the extra 1 under ${inl("p")} lets a single multiplication do the turn and the shift.</p>`,
+        <p>To convert, turn by the base's angle, then add where the base is. A <b>transform</b> ${inl("T")} packs both steps into one matrix.</p>
+        <p><b>Homogeneous coordinates</b> are what make that work. A rotation matrix can turn a point but cannot shift it, because multiplying a matrix by the origin always gives the origin. So write the point with a 1 on the end, ${inl("(x, y, 1)")}, and put the shift in an extra column: ${inl("T = \\begin{bmatrix} R & t \\\\ 0 & 1 \\end{bmatrix}")}. Multiplying ${inl("T")} by ${inl("(x, y, 1)")} turns the point and adds ${inl("t")} in one go, and the bottom row keeps the 1 in place for the next matrix.</p>
+        <p>That buys two things. <b>Chaining</b>: going through several frames is just multiplying their matrices, ${inl("T_{AC} = T_{AB}\\,T_{BC}")}, which is how the arm in the next lessons is built. <b>Going back</b>: the inverse is ${inl("T^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix}")}, no general matrix inversion needed. A direction rather than a point gets a 0 instead of the 1, so it turns but never shifts. In 3D it is the same idea with a 4×4 matrix.</p>`,
       controls() {
         const b = s2.base;
         return [sliders(
@@ -385,6 +387,8 @@ export function start(root) {
           `p_W = R\\,p_B + t = ${vec(pW)}`,
           { note: "The same thing as one matrix, with a 1 added under each point:" },
           `T_{WB} = ${mat([[c, -s, b.x], [s, c, b.y], [0, 0, 1]], 3)}, \\quad T_{WB} ${vec([...pB, 1])} = ${vec([...pW, 1])}`,
+          { note: "And back again, with the inverse built from the transpose:" },
+          `T_{WB}^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix} = ${mat([[c, s, -(c * b.x + s * b.y)], [-s, c, s * b.x - c * b.y], [0, 0, 1]], 3)}, \\quad T_{WB}^{-1} ${vec([...pW, 1])} = ${vec([...pB, 1])}`,
         ];
       },
     },
@@ -536,7 +540,7 @@ export function start(root) {
       short: "FK in 3D",
       dim: "3d",
       body: () => `
-        <p>An industrial arm chains <b>six joints</b>. Each adds one transform: shift along its link, then turn about its axis. Multiply all six and you have the tool's pose in the world, a rotation ${inl("R")} and a position ${inl("p")} together in one 4×4 matrix.</p>
+        <p>An industrial arm chains <b>six joints</b>. Each adds one transform: shift along its link, then turn about its axis. Multiply all six and you have the tool's pose in the world, a rotation ${inl("R")} and a position ${inl("p")} together in one 4×4 matrix. It is the homogeneous matrix from lesson 1 with one more dimension: ${inl("R")} is now 3×3, ${inl("p")} has three entries, and the bottom row is ${inl("[0\\ 0\\ 0\\ 1]")}.</p>
         <p>Coral joints <b>bend</b> (about their Y); teal joints <b>twist</b> (about their Z). The small axes at each joint show that joint's own frame, and the big ones at the end are the tool frame.</p>
         <p>This is the same calculation the URDF viewer tab runs on any robot you load.</p>`,
       controls() {
@@ -579,7 +583,7 @@ export function start(root) {
         <p>The <b>Jacobian</b> ${inl("J")} says how fast the tip moves for each joint's speed. Turning it around converts "move the tip this way" into "turn the joints this much". The damping ${inl("\\lambda")} keeps the step sensible where ${inl("J")} cannot be inverted.</p>
         <p>That happens at a <b>singularity</b>, where the arm loses a direction it can move in: fully stretched, or with two wrist axes in line. <b>Manipulability</b> ${inl("w")} measures how far the arm is from one, and drops to zero there. Try the buttons.</p>`,
       controls() {
-        const set = (i) => (v) => { s3.target[i] = v; startSolve(); };
+        const set = (i) => (v) => { s3.target[i] = v; s3.singular = null; startSolve(); };
         const items = [
           slider({ label: "Target x", min: -0.9, max: 0.9, step: 0.01, value: s3.target[0], unit: " m", digits: 2, onInput: set(0) }),
           slider({ label: "Target y", min: -0.9, max: 0.9, step: 0.01, value: s3.target[1], unit: " m", digits: 2, onInput: set(1) }),
@@ -592,12 +596,19 @@ export function start(root) {
           el("div", { class: "learn-row" },
             button("Random reachable target", () => {
               const q = ARM6.home.map((v) => v + (Math.random() - 0.5) * 2);
+              s3.q = [...ARM6.home];
               setTarget(tfPos(fk6(q).tool));
             }),
             button("Out of reach", () => setTarget([0.85, -0.6, 1.2])),
-            button("Start at the singularity", () => {
+            // Two singular poses that stay put, so you can look at them. Moving
+            // the target afterwards shows the solver finding its way out.
+            button("Straight up (singular)", () => {
               s3.q = [0, 0, 0, 0, 0, 0];
-              setTarget([0.25, 0.1, 1.0]);
+              setTarget(tfPos(fk6(s3.q).tool), { solve: false, singular: "up" });
+            }),
+            button("Stretch out (singular)", () => {
+              s3.q = [...ARM6.home];
+              setTarget([reach6(), 0, ARM6.joints[1].offset[2]], { singular: "stretch" });
             })),
         ];
       },
@@ -619,19 +630,24 @@ export function start(root) {
         const err = norm(e);
         const w = manipulability(J);
         const far = Math.hypot(s3.target[0], s3.target[1], s3.target[2] - 0.3) > reach6();
+        const singular = w < 0.005;
         let status;
         if (s3.solving) status = `Solving: step ${s3.iters}, still ${num(err * 1000, 1)} mm off.`;
+        else if (singular && s3.singular === "up") status = "At a singularity. Straight up, joints 1, 4 and 6 all turn about the same vertical line, which runs through the tip, so turning them does not move the tip at all, and the three bending joints can only push it along x. Sideways in y is impossible from here, and w is zero. Move the target to watch the solver work its way out.";
+        else if (singular && s3.singular === "stretch") status = `At a singularity. Fully stretched, no combination of joints can move the tip any further out, so w is close to zero. Watch the step count: the last few millimetres took many small steps, because the damping holds each step back where J can no longer be inverted.`;
         else if (err < 1e-3) status = `Reached in ${s3.iters} step${s3.iters === 1 ? "" : "s"}.`;
         else if (far) status = `Out of reach: ${num(reach6(), 2)} m is the most the arm can stretch from its shoulder, so it stops as close as it can get.`;
         else status = `Stopped ${num(err * 1000, 1)} mm away after ${s3.iters} steps. A different start or less damping may get there.`;
-        if (w < 0.005) status += " The arm is at or near a singularity, so some directions are barely reachable.";
+        // The two singular presets explain themselves; anything else that ends
+        // near a singularity gets a short note on the end.
+        if (singular && !s3.singular && !s3.solving) status += " The arm is at or near a singularity, so some directions are barely reachable.";
         return [
-          `e = p_{\\text{target}} - p_{\\text{tip}} = ${vec(e)}, \\quad \\|e\\| = ${err < 1e-4 ? "< 0.1" : num(err * 1000, 1)}\\,\\text{mm}`,
+          `e = p_{\\text{target}} - p_{\\text{tip}} = ${vec(e)}, \\quad \\|e\\| ${err < 1e-4 ? "< 0.1" : `= ${num(err * 1000, 1)}`}\\,\\text{mm}`,
           `\\Delta q = J_v^\\top \\left(J_v J_v^\\top + \\lambda^2 I\\right)^{-1} e, \\quad \\lambda = ${num(s3.lambda, 2)}`,
           { note: "With six joints and only three position numbers to match, there are endless answers. The solver uses the spare freedom to drift back toward the home pose, so the arm does not end up in a knot." },
           { note: `${inl("J_v")}, the top three rows of ${inl("J")}: one column per joint, how the tip moves (m per radian) when only that joint turns.` },
           `J_v = ${mat(J.slice(0, 3), 2)}`,
-          `w = \\sqrt{\\det\\left(J J^\\top\\right)} = ${num(w, 4)}`,
+          `w = \\sqrt{\\det\\left(J J^\\top\\right)} = ${num(w, 4)}${singular ? "\\quad \\text{(singular)}" : ""}`,
           { note: status, cls: "verdict" },
         ];
       },
@@ -643,10 +659,17 @@ export function start(root) {
   let armSliders = [];
   let targetSliders = [];
   function syncArmSliders() { armSliders.forEach((s, i) => s.set(s3.q[i] / DEG)); }
-  function setTarget(t) {
-    s3.target = t.map((v) => Math.round(v * 100) / 100);
+  function setTarget(t, { solve = true, singular = null } = {}) {
+    s3.target = solve ? t.map((v) => Math.round(v * 100) / 100) : [...t];
+    s3.singular = singular;
     targetSliders.slice(0, 3).forEach((s, i) => s.set(s3.target[i]));
-    startSolve();
+    if (solve) {
+      startSolve();
+    } else {
+      s3.solving = false;
+      s3.iters = 0;
+      render();
+    }
   }
   const yprMatrix = () => matMul(matMul(rotZ(s3.ypr[0]), rotY(s3.ypr[1])), rotX(s3.ypr[2]));
   const otherOrder = () => matMul(matMul(rotX(s3.ypr[2]), rotY(s3.ypr[1])), rotZ(s3.ypr[0]));
@@ -734,7 +757,7 @@ export function start(root) {
     }
     // Each visit to the IK lesson starts from home, so the solve it shows is
     // the same one every time rather than whatever lesson 5 left behind.
-    if (l.short === "IK and the Jacobian") { s3.q = [...ARM6.home]; startSolve(); }
+    if (l.short === "IK and the Jacobian") { s3.q = [...ARM6.home]; s3.singular = null; startSolve(); }
     render();
   }
 
