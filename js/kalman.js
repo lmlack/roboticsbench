@@ -5,7 +5,7 @@
 
 import { PRESETS, PROFILES, Simulation } from "./kalman-sim.js";
 import { inl, mat, num, par, tex, unit, vec } from "./tex.js";
-import { cssVar, el, evalNumber, fmt, segmented } from "./util.js";
+import { cssVar, dockWhenNarrow, el, evalNumber, fmt, segmented } from "./util.js";
 
 const WINDOW = 10; // seconds shown on the charts
 const TRACK_METERS = 12; // visible width of the track
@@ -16,6 +16,8 @@ const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 export function start(root) {
   const $ = (sel) => root.querySelector(sel);
   const sim = new Simulation({}, newSeed());
+  // On a phone, Play/Pause, Reset and speed sit right under the track.
+  dockWhenNarrow($("#kf-pause").closest(".side-section"), $("#kf-canvas").closest(".panel"));
   // Opens at rest: the first frame is drawn, nothing moves until Play.
   let paused = true;
   let speed = 1;
