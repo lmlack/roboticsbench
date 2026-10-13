@@ -579,7 +579,7 @@ export function start(root) {
       short: "IK and the Jacobian",
       dim: "3d",
       body: () => `
-        <p>Six joints have no tidy closed form in general, so arms are usually solved <b>numerically</b>: from the current joints, take a small step that moves the tip toward the target, and repeat. Move the target and watch it converge.</p>
+        <p>Six joints have no tidy closed form in general, so arms are usually solved <b>numerically</b>: from the current joints, take a small step that moves the tip toward the target, and repeat. The yellow ball is the <b>target</b>, the point the tip should reach; move it with the sliders and watch the arm converge on it.</p>
         <p>The <b>Jacobian</b> ${inl("J")} says how fast the tip moves for each joint's speed. Turning it around converts "move the tip this way" into "turn the joints this much". The damping ${inl("\\lambda")} keeps the step sensible where ${inl("J")} cannot be inverted.</p>
         <p>That happens at a <b>singularity</b>, where the arm loses a direction it can move in: fully stretched, or with two wrist axes in line. <b>Manipulability</b> ${inl("w")} measures how far the arm is from one, and drops to zero there. Try the buttons.</p>`,
       controls() {
