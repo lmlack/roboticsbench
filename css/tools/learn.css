@@ -1,0 +1,79 @@
+/* Learn: a six-step class. Only what the shared classes do not cover. */
+
+/* Home page: the class leads in, above the six tool cards. */
+.learn-banner {
+  display: flex; align-items: center; gap: 16px; margin: 28px auto 0; max-width: 820px;
+  padding: 14px 18px; color: var(--fg); text-decoration: none;
+  background: var(--panel); border: 1.5px dashed var(--accent); border-radius: var(--radius-card);
+  box-shadow: var(--shadow); transition: transform 0.15s, border-color 0.15s;
+}
+.learn-banner:hover { transform: translateY(-2px); border-style: solid; }
+.learn-banner .icon {
+  flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid var(--accent); color: var(--accent);
+}
+.learn-banner .icon svg { width: 26px; height: 26px; }
+.learn-banner-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.learn-banner-text strong { font-family: var(--font-display); font-weight: 400; font-size: var(--text-lg); }
+.learn-banner-text span { color: var(--fg-muted); font-size: var(--text-sm); }
+.learn-banner-go { margin-left: auto; flex: none; font-weight: 600; color: var(--accent); }
+
+/* Lesson picker: numbered stops along a line, the current one lit. */
+.learn-steps {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px;
+  max-width: 980px; margin: 0 auto 18px; counter-reset: step;
+}
+.learn-steps button {
+  display: grid; justify-items: center; gap: 4px; padding: 6px 4px; border: 0; background: none;
+  color: var(--fg-subtle); font-size: var(--text-sm); cursor: pointer; text-align: center; line-height: 1.25;
+}
+.learn-steps .dot {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  border: 1.5px solid var(--line-strong); background: var(--panel); font-weight: 700; color: var(--fg-muted);
+}
+.learn-steps button:hover .dot { border-color: var(--fg); }
+.learn-steps button.done .dot { background: var(--teal-soft); border-color: var(--teal); color: var(--teal); }
+.learn-steps button[aria-current="step"] { color: var(--fg); font-weight: 600; }
+.learn-steps button[aria-current="step"] .dot { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+.learn-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.learn-stage-panel { display: grid; gap: 14px; }
+#tool-learn .learn-canvas { aspect-ratio: 4 / 3; touch-action: none; }
+#tool-learn .learn-canvas canvas { cursor: default; }
+#tool-learn .learn-canvas.draggable canvas { cursor: crosshair; }
+.learn-viewport { aspect-ratio: 4 / 3; }
+
+.learn-controls { display: grid; gap: 12px; }
+.learn-sliders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+.learn-slider { display: grid; gap: 2px; min-width: 0; }
+.learn-slider .head { display: flex; justify-content: space-between; gap: 8px; font-size: var(--text-sm); }
+.learn-slider .head span:first-child { font-weight: 600; color: var(--fg-muted); }
+.learn-slider .head .val { font-family: var(--font-mono); color: var(--fg); }
+.learn-slider input { width: 100%; }
+.learn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+
+.learn-body { display: grid; gap: 10px; color: var(--fg-muted); line-height: 1.55; }
+.learn-body p { margin: 0; }
+.learn-body b { color: var(--fg); }
+.learn-math-head {
+  margin: 18px 0 8px; font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--teal);
+}
+.learn-math { display: grid; gap: 4px; min-width: 0; }
+.learn-math .eq-note { margin: 6px 0 0; }
+.learn-nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
+
+@media (max-width: 960px) {
+  .learn-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  /* The whole banner is the link, so the "Start" label can go on a phone. */
+  .learn-banner { align-items: flex-start; gap: 12px; padding: 14px; }
+  .learn-banner .icon { width: 40px; height: 40px; }
+  .learn-banner .icon svg { width: 22px; height: 22px; }
+  .learn-banner-text { flex: 1 1 0; }
+  .learn-banner-go { display: none; }
+  /* Six titles do not fit a phone; the numbers do, and the panel says the name. */
+  .learn-steps .label { display: none; }
+  .learn-sliders { grid-template-columns: minmax(0, 1fr); }
+}
