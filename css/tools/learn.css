@@ -61,6 +61,11 @@
 .learn-try ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .learn-up-next { color: var(--fg-subtle); }
 .learn-up-next b { color: var(--teal); }
+.learn-symbols { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.learn-symbols-head { margin: 0 0 6px; font-size: var(--text-sm); font-weight: 700; color: var(--fg); }
+.learn-symbols dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: var(--text-sm); align-items: baseline; }
+.learn-symbols dt { white-space: nowrap; }
+.learn-symbols dd { margin: 0; color: var(--fg-muted); }
 .learn-math-head {
   margin: 18px 0 8px; font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--teal);
