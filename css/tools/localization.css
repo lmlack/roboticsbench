@@ -58,6 +58,8 @@
 .loc-c-ukf { --c: var(--plot-i); }
 .loc-c-slam { --c: var(--plot-error); }
 .loc-c-grid { --c: var(--plot-p); }
+.loc-c-graph { --c: var(--plot-d); }
+.loc-key-graph svg { color: var(--plot-d); }
 .loc-c-dr { --c: var(--fg-subtle); background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
 .loc-algo .loc-swatch { margin-right: 0; }
 
@@ -71,9 +73,12 @@
 #tool-localization .loc-map-wrap.is-wall-mode canvas { cursor: crosshair; }
 .loc-edit-row .small { margin-right: 4px; }
 
-/* Metrics: a table of estimators, then two tiles. */
+/* Metrics: a table of estimators, then four tiles. */
 .loc-table th.row { white-space: nowrap; }
 .loc-table td.loc-word { font-family: var(--font-sans); text-align: left; }
+/* Look-alike landmarks: wrong matches in the last 20 s, under the status word. */
+.loc-wrong { display: block; font-size: var(--text-sm); color: var(--fg-subtle); white-space: normal; }
+.loc-wrong.bad { color: var(--bad-fg); }
 .loc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 
 /* Drive: heading, pad and hint read as one centered group. */
