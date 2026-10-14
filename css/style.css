@@ -43,6 +43,7 @@
   /* Axis colors follow the robotics convention X red, Y green, Z blue. */
   --axis-x: #b71c1c;
   --axis-y: #276b2b;
+  --spin-axis: #7b3fc4;    /* the axis-angle arrow: apart from X, Y, Z */
   --axis-z: #1557b0;
   --plot-measured: #0b6f6c;
   --plot-setpoint: #0d2e33;
@@ -95,6 +96,7 @@
   --bar-fg: #eaf7f3;
   --axis-x: #ff6b66;
   --axis-y: #66bb6a;
+  --spin-axis: #c39bff;
   --axis-z: #5aaefc;
   --plot-measured: #4fd8cf;
   --plot-setpoint: #eaf7f3;
@@ -312,6 +314,7 @@ input[type="range"] { accent-color: var(--accent); }
 
 .axis-x { color: var(--axis-x); }
 .axis-y { color: var(--axis-y); }
+.spin-key { color: var(--spin-axis); }
 .axis-z { color: var(--axis-z); }
 
 canvas { display: block; }
@@ -389,7 +392,7 @@ canvas { display: block; }
 }
 .viewport canvas { width: 100%; height: 100%; }
 .viewport .legend {
-  position: absolute; left: 10px; bottom: 8px; display: flex; gap: 12px;
+  position: absolute; left: 10px; right: 120px; bottom: 8px; display: flex; flex-wrap: wrap; gap: 2px 12px;
   font-size: var(--text-sm); font-weight: 600; pointer-events: none;
 }
 .viewport .hint {

@@ -176,6 +176,17 @@ export function axisAngleToQuat(axis, angle) {
   return qNormalize([Math.cos(angle / 2), axis[0] * s, axis[1] * s, axis[2] * s]);
 }
 
+/**
+ * A rotation picked uniformly at random (Shoemake's method), w kept positive.
+ * `rand` returns numbers in [0, 1), so tests can pass a seeded one.
+ */
+export function randomQuat(rand = Math.random) {
+  const [u1, u2, u3] = [rand(), rand(), rand()];
+  const a = Math.sqrt(1 - u1), b = Math.sqrt(u1);
+  const q = [b * Math.cos(2 * Math.PI * u3), a * Math.sin(2 * Math.PI * u2), a * Math.cos(2 * Math.PI * u2), b * Math.sin(2 * Math.PI * u3)];
+  return qNormalize(q[0] < 0 ? q.map((v) => -v) : q);
+}
+
 export function rotvecToQuat(rv) {
   const angle = Math.hypot(...rv);
   return angle < 1e-12 ? [...IDENTITY_Q] : axisAngleToQuat(rv, angle);
