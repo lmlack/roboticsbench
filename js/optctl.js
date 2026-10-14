@@ -120,10 +120,11 @@ const rollout = (key, x0, U, dt) => {
  *
  * @returns {{X: number[][], U: number[], K: number[][], costs: number[], iters: number}}
  */
-export function ilqr(key, x0, sp, { N, dt, U0, maxIter = 60, tol = 1e-4, weights } = {}) {
+export function ilqr(key, x0, sp, { N, dt, U0, maxIter = 60, tol = 1e-4, weights, limits, onIter } = {}) {
   const m = MODELS[key];
   const w = weights ?? m;
-  const [lo, hi] = SYSTEMS[key].uLimit;
+  // limits overrides the plant's own, e.g. a weak motor in the Learn lesson.
+  const [lo, hi] = limits ?? SYSTEMS[key].uLimit;
   const { x: xg, u: ug } = m.goal(sp);
   const n = m.keys.length;
   const clamp = (u) => Math.min(hi, Math.max(lo, u));
@@ -188,6 +189,7 @@ export function ilqr(key, x0, sp, { N, dt, U0, maxIter = 60, tol = 1e-4, weights
         const drop = (J - Jn) / Math.max(1, Math.abs(J));
         X = Xn; U = Un; K = Kfb; J = Jn;
         costs.push(J);
+        onIter?.(X, J);
         accepted = true;
         mu = Math.max(1e-6, mu / 4);
         if (drop < tol) { iters++; return { X, U, K, costs, iters }; }

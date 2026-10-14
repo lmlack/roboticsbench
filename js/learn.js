@@ -1,4 +1,4 @@
-// Learn: a six-step class on robot arm basics. Lessons 1–3 use a 2-link arm
+// Learn: an eight-step class, from robot arm basics to planning and SLAM. Lessons 1–3 use a 2-link arm
 // drawn flat on a canvas, where every quantity can be seen at once; 4–6 move
 // to 3D for rotations, a 6-axis arm and numerical IK. Each lesson owns its
 // controls, its drawing and its live math; this file only switches between
@@ -29,6 +29,7 @@ import {
   tfRot,
 } from "./learn-math.js";
 import { matrixToQuat } from "./rotation-math.js";
+import { LOOP, MGL, SWING_WEIGHTS, SlamLoop, SwingUp } from "./learn-sims.js";
 import { axisTriad, createViewport, disposeObject } from "./three-common.js";
 import { inl, mat, num, row, vec } from "./tex.js";
 import { cssVar, el, segmented } from "./util.js";
@@ -57,6 +58,8 @@ export function start(root) {
     trace: false, trail: [],
     target: [1.15, 0.75], elbow: "up", ghost: true,
   };
+  const s7 = { sim: new SwingUp(), iterations: [], trace: [], t0: 0, reveal: 1 };
+  const s8 = { sim: new SlamLoop(), playing: true, speed: 2, showDR: true };
   const s3 = {
     ypr: [40 * DEG, 25 * DEG, 30 * DEG], other: false,
     q: [...ARM6.home], frames: true,
@@ -122,7 +125,7 @@ export function start(root) {
     };
   }
 
-  function begin2d(box) {
+  function begin2d(box, gridStep = 0.5) {
     if (!size2?.w) return null;
     const ctx = canvas.getContext("2d");
     ctx.setTransform(size2.dpr, 0, 0, size2.dpr, 0, 0);
@@ -133,14 +136,14 @@ export function start(root) {
     ctx.strokeStyle = c.line;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = Math.ceil(box.x0 * 2) / 2; x <= box.x1; x += 0.5) { ctx.moveTo(v.X(x), 0); ctx.lineTo(v.X(x), size2.h); }
-    for (let y = Math.ceil(box.y0 * 2) / 2; y <= box.y1; y += 0.5) { ctx.moveTo(0, v.Y(y)); ctx.lineTo(size2.w, v.Y(y)); }
+    for (let x = Math.ceil(box.x0 / gridStep) * gridStep; x <= box.x1; x += gridStep) { ctx.moveTo(v.X(x), 0); ctx.lineTo(v.X(x), size2.h); }
+    for (let y = Math.ceil(box.y0 / gridStep) * gridStep; y <= box.y1; y += gridStep) { ctx.moveTo(0, v.Y(y)); ctx.lineTo(size2.w, v.Y(y)); }
     ctx.stroke();
     ctx.fillStyle = c.subtle;
     ctx.font = "13px Hyper, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText("grid: 0.5 m", 10, size2.h - 8);
+    ctx.fillText(`grid: ${gridStep} m`, 10, size2.h - 8);
     return { ctx, v, c };
   }
 
@@ -652,9 +655,327 @@ export function start(root) {
         ];
       },
     },
+    {
+      title: "Planning ahead: iLQR and MPC",
+      short: "iLQR and MPC",
+      dim: "2d",
+      box: { x0: -1.6, x1: 4.0, y0: -1.25, y1: 2.95 },
+      hint: "",
+      body: () => `
+        <p>Some jobs need a plan, not just a reaction. This arm's motor is too weak to lift it straight up: holding it out level takes ${inl(`mgL = ${MGL}`)} N·m, and the motor gives a few. A controller that only pushes against the error it sees right now would push toward the top forever and get nowhere.</p>
+        <p><b>iLQR</b> plans the whole move. It starts from a guess and improves it over and over: each pass linearizes the arm around the current plan, solves that easier problem from the end backward, and keeps the change only if the cost goes down. The chart shows every pass, faint to bold. The final plan swings the arm back and forth to build up speed, then lifts it.</p>
+        <p><b>MPC</b> uses the same solver but re-plans every 100 ms from where the arm really is. Kick the arm while it follows a plan blindly and it misses. Switch to MPC and kick it again: the next plan just starts from the kick.</p>`,
+      controls() {
+        return [
+          sliders(
+            slider({ label: "Motor strength", min: 3, max: 8, step: 0.5, value: s7.sim.limit, unit: " N·m", digits: 1, onInput: (v) => { s7.sim.limit = v; restart7(); } }),
+          ),
+          el("div", { class: "learn-row" },
+            seg("How to run it", [["follow", "Follow the plan"], ["mpc", "Re-plan as it goes (MPC)"]], s7.sim.mode, (v) => { s7.sim.mode = v; restart7(); })),
+          el("div", { class: "learn-row" },
+            button("Kick", () => { s7.sim.kick(s7.sim.x[1] >= 0 ? 2.2 : -2.2); if (s7.sim.mode === "mpc") markChart7(); }, "btn solid"),
+            button("Start over", () => restart7())),
+        ];
+      },
+      tick(dt) {
+        if (s7.reveal < 1) { s7.reveal = Math.min(1, s7.reveal + dt / 1.4); return; }
+        s7.sim.advance(dt);
+        const t = s7.sim.t - s7.t0;
+        s7.trace.push([t, s7.sim.x[0]]);
+        if (s7.trace.length > 2000) s7.trace.shift();
+      },
+      draw(g) {
+        const { ctx, v, c } = g;
+        const sim = s7.sim;
+        const pivot = [0, 0.9];
+        // The arm, θ measured from hanging straight down.
+        const th = sim.x[0];
+        const bob = [pivot[0] + Math.sin(th), pivot[1] - Math.cos(th)];
+        ctx.save();
+        ctx.setLineDash([5, 6]);
+        ctx.strokeStyle = c.line;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(v.X(pivot[0]), v.Y(pivot[1]), v.s, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        dashed(g, pivot, [pivot[0], pivot[1] + 1], c.teal);
+        label(g, pivot[0] + 0.05, pivot[1] + 1.05, "goal: straight up", c.teal);
+        ctx.lineCap = "round";
+        ctx.strokeStyle = c.muted;
+        ctx.lineWidth = Math.max(6, v.s * 0.07);
+        ctx.beginPath();
+        ctx.moveTo(v.X(pivot[0]), v.Y(pivot[1]));
+        ctx.lineTo(v.X(bob[0]), v.Y(bob[1]));
+        ctx.stroke();
+        dot(g, ...bob, c.highlight, Math.max(8, v.s * 0.09));
+        dot(g, ...pivot, c.fg, 6);
+        // Motor torque as an arc at the pivot, longer for more.
+        const frac = sim.u / sim.limit;
+        if (Math.abs(frac) > 0.02) {
+          ctx.strokeStyle = c.accent;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          const r = v.s * 0.28, a0 = -Math.PI / 2;
+          ctx.arc(v.X(pivot[0]), v.Y(pivot[1]), r, a0, a0 - frac * Math.PI * 0.9, frac > 0);
+          ctx.stroke();
+        }
+        label(g, -1.5, 2.75, `motor ${num(sim.u, 1).replace("-", "−")} of ±${sim.limit} N·m`, c.muted);
+
+        // Chart of θ against time: every iLQR pass, the arm's actual path, and MPC's forecast.
+        const box = { x0: 1.35, x1: 3.85, y0: -1.0, y1: 2.6 };
+        const T = sim.horizon + 1.5;
+        const cx = (t) => box.x0 + (t / T) * (box.x1 - box.x0);
+        const lo = -1.25 * Math.PI, hi = 1.25 * Math.PI;
+        const cy = (a) => box.y0 + ((Math.max(lo, Math.min(hi, a)) - lo) / (hi - lo)) * (box.y1 - box.y0);
+        ctx.strokeStyle = c.strong;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(v.X(box.x0), v.Y(box.y1), (box.x1 - box.x0) * v.s, (box.y1 - box.y0) * v.s);
+        for (const [a, txt] of [[Math.PI, "up"], [0, "down"], [-Math.PI, "up"]]) {
+          dashed(g, [box.x0, cy(a)], [box.x1, cy(a)], a === 0 ? c.line : c.teal);
+          ctx.fillStyle = c.subtle;
+          ctx.font = "12px Hyper, system-ui, sans-serif";
+          ctx.textAlign = "right";
+          ctx.textBaseline = "middle";
+          ctx.fillText(txt, v.X(box.x0) - 5, v.Y(cy(a)));
+        }
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("angle over time", v.X(box.x0), v.Y(box.y0) + 4);
+        const curve = (pts, color, width, alpha = 1, dash = null) => {
+          if (pts.length < 2) return;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          if (dash) ctx.setLineDash(dash);
+          ctx.beginPath();
+          pts.forEach(([t, a], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, v.X(cx(t)), v.Y(cy(a))));
+          ctx.stroke();
+          ctx.restore();
+        };
+        if (sim.mode === "follow" && s7.iterations.length) {
+          const shown = Math.max(1, Math.ceil(s7.reveal * s7.iterations.length));
+          s7.iterations.slice(0, shown).forEach((X, i) => {
+            const last = i === shown - 1;
+            curve(X.map((x, k) => [k * sim.dt, x[0]]), c.accent, last ? 3 : 1.2, last ? 1 : 0.15 + 0.5 * (i / s7.iterations.length));
+          });
+        }
+        const fc = sim.forecast();
+        if (fc) {
+          const now = sim.t - s7.t0;
+          curve(fc.map((x, k) => [now + k * 0.05, x[0]]), c.accent, 2.5, 0.9, [6, 5]);
+        }
+        curve(s7.trace, c.fg, 2);
+        return sim;
+      },
+      math(sim) {
+        const lines = [
+          `\\tau_{\\max} = ${num(sim.limit, 1)}\\,\\text{N·m} < mgL = ${MGL}\\,\\text{N·m}`,
+          { note: "So it can't lift the arm straight up. It has to swing back and forth to build up speed first." },
+          `J = \\sum_k \\big( e_k^\\top Q\\, e_k + R\\,\\tau_k^2 \\big) + e_N^\\top Q_f\\, e_N`,
+          `Q = \\operatorname{diag}(${SWING_WEIGHTS.Q.join(", ")}),\\quad Q_f = \\operatorname{diag}(${SWING_WEIGHTS.Qf.join(", ")}),\\quad R = ${SWING_WEIGHTS.R}`,
+          { note: `A light charge for being away from the top along the way and a heavy one at the end. Charge heavily all the way and swinging away first looks expensive, so the planner settles for hanging partway up.` },
+        ];
+        if (sim.mode === "follow" && sim.plan) {
+          const c = sim.plan.costs;
+          lines.push(`J:\\ ${num(c[0], 0)} \\to ${num(c[c.length - 1], 0)}\\ \\text{in ${sim.plan.iters} passes}`);
+          lines.push(`\\tau(t) = \\bar\\tau_k \\quad\\text{(the plan, exactly as computed)}`);
+          lines.push({ note: "Followed blindly: nothing checks where the arm actually is until it reaches the top, where a steady LQR takes over to balance it.", cls: "eq-note" });
+        } else {
+          lines.push(`\\text{re-plans so far: } ${sim.solves},\\quad \\tau = ${num(sim.u, 2)}\\,\\text{N·m}`);
+          lines.push({ note: "Every 100 ms it solves for the rest of the move from the measured angle and speed, toward a fixed finish time, and applies only the first step. If it reaches the finish without getting there, it sets a new one and tries again." });
+        }
+        lines.push({ note: sim.upright ? "Balanced at the top." : "Not at the top yet.", cls: "verdict" });
+        return lines;
+      },
+    },
+    {
+      title: "SLAM: building the map as you go",
+      short: "SLAM",
+      dim: "2d",
+      box: { x0: -0.3, x1: 10.3, y0: -0.4, y1: 7.6 },
+      grid: 1,
+      hint: "",
+      body: () => `
+        <p>Localization assumes someone gave you a map. Often nobody did. <b>SLAM</b>, simultaneous localization and mapping, builds the map and finds the robot on it at the same time.</p>
+        <p>This robot drives a loop with a short-range sensor. The first time it sees a landmark, it adds it to the map where the measurement says, and that landmark inherits all the robot's uncertainty so far. The crosses are its map and the ellipses show how sure it is. Small wheel errors add up as it goes round, so landmarks it maps later are less certain.</p>
+        <p>Then it gets back to the start and sees its first landmarks again: a <b>loop closure</b>. The filter has kept track of how every landmark's error is tied to the robot's, so that one sighting corrects the robot and pulls the whole map back into place. Watch the chart below drop when it happens. Dead reckoning never looks at landmarks, so it just keeps drifting.</p>`,
+      controls() {
+        return [
+          el("div", { class: "learn-row" },
+            button(s8.playing ? "Pause" : "Play", (e) => { s8.playing = !s8.playing; e.currentTarget.textContent = s8.playing ? "Pause" : "Play"; }, "btn solid"),
+            button("Start over", () => { s8.sim.reset(); render(); }),
+            seg("Speed", [["1", "1×"], ["2", "2×"], ["4", "4×"]], String(s8.speed), (v) => (s8.speed = Number(v)))),
+          sliders(
+            slider({ label: "Sensor range", min: 1.5, max: 4, step: 0.1, value: s8.sim.range, unit: " m", digits: 1, onInput: (v) => { s8.sim.range = v; } }),
+            slider({ label: "Wheel slip", min: 0.5, max: 5, step: 0.5, value: s8.sim.odomNoise, unit: "×", digits: 1, onInput: (v) => { s8.sim.odomNoise = v; } }),
+          ),
+          el("div", { class: "learn-row" }, check("Show dead reckoning", s8.showDR, (on) => { s8.showDR = on; render(); })),
+        ];
+      },
+      tick(dt) {
+        if (s8.playing) s8.sim.advance(dt * s8.speed);
+      },
+      draw(g) {
+        const { ctx, v, c } = g;
+        const sim = s8.sim;
+        const tr = sim.truth;
+        // The loop it drives, faint.
+        ctx.save();
+        ctx.setLineDash([4, 7]);
+        ctx.strokeStyle = c.line;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(v.X(LOOP.cx), v.Y(LOOP.cy), LOOP.rx * v.s, LOOP.ry * v.s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        // Sensor range and what it can see right now.
+        ctx.save();
+        ctx.fillStyle = c.teal;
+        ctx.globalAlpha = 0.08;
+        ctx.beginPath();
+        ctx.arc(v.X(tr.x), v.Y(tr.y), sim.range * v.s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        for (const m of sim.z) dashed(g, [tr.x, tr.y], [sim.landmarks[m.j].x, sim.landmarks[m.j].y], c.teal);
+        // True landmarks.
+        sim.landmarks.forEach((lm) => {
+          ctx.beginPath();
+          ctx.arc(v.X(lm.x), v.Y(lm.y), 6, 0, Math.PI * 2);
+          ctx.fillStyle = c.panel;
+          ctx.fill();
+          ctx.strokeStyle = c.strong;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        });
+        // The map SLAM has built.
+        for (const m of sim.slam.map()) {
+          const t = sim.landmarks[m.j];
+          ctx.save();
+          ctx.strokeStyle = c.accent;
+          ctx.globalAlpha = 0.4;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(v.X(m.x), v.Y(m.y));
+          ctx.lineTo(v.X(t.x), v.Y(t.y));
+          ctx.stroke();
+          ctx.globalAlpha = 0.13;
+          ctx.fillStyle = c.accent;
+          ctx.beginPath();
+          ctx.ellipse(v.X(m.x), v.Y(m.y), Math.max(3, m.rx * v.s), Math.max(3, m.ry * v.s), -m.angle, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 0.8;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(v.X(m.x) - 5, v.Y(m.y) - 5); ctx.lineTo(v.X(m.x) + 5, v.Y(m.y) + 5);
+          ctx.moveTo(v.X(m.x) - 5, v.Y(m.y) + 5); ctx.lineTo(v.X(m.x) + 5, v.Y(m.y) - 5);
+          ctx.stroke();
+          ctx.restore();
+        }
+        // Trails: truth, SLAM, and dead reckoning if shown.
+        const trail = (key, color, width, dash) => {
+          if (sim.trail.length < 2) return;
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          if (dash) ctx.setLineDash(dash);
+          ctx.beginPath();
+          sim.trail.forEach((p, i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, v.X(p[key][0]), v.Y(p[key][1])));
+          ctx.stroke();
+          ctx.restore();
+        };
+        if (s8.showDR) trail("dr", c.subtle, 1.5, [5, 4]);
+        trail("truth", c.fg, 2);
+        trail("slam", c.accent, 2);
+        const robotMark = (p, color, size) => {
+          ctx.save();
+          ctx.translate(v.X(p.x), v.Y(p.y));
+          ctx.rotate(-p.th);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(size, 0); ctx.lineTo(-size * 0.7, size * 0.6); ctx.lineTo(-size * 0.7, -size * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        };
+        if (s8.showDR) robotMark(sim.dr.pose, c.subtle, 10);
+        const e = sim.slam.estimate();
+        const re = sim.slam.ellipse();
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = c.accent;
+        ctx.beginPath();
+        ctx.ellipse(v.X(e.x), v.Y(e.y), Math.max(3, re.rx * v.s), Math.max(3, re.ry * v.s), -re.angle, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        robotMark(e, c.accent, 13);
+        robotMark(tr, c.fg, 11);
+        ctx.fillStyle = c.muted;
+        ctx.font = "13px Hyper, system-ui, sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "top";
+        ctx.fillText(`${num(sim.t, 0)} s`, size2.w - 10, 8);
+        return sim;
+      },
+      math(sim) {
+        const map = sim.slam.map();
+        const n = sim.slam.mu.length;
+        const spread = sim.mapSpread();
+        const lines = [
+          `\\mu = (x,\\ y,\\ \\theta,\\ m_1,\\ \\dots,\\ m_{${map.length}}),\\quad ${n} \\text{ numbers},\\quad \\Sigma:\\ ${n} \\times ${n}`,
+          { note: `${map.length} of ${sim.landmarks.length} landmarks mapped. ${inl("\\Sigma")} holds how sure it is of each one and, more importantly, how their errors are tied to the robot's and to each other.` },
+          `\\text{robot off by } ${num(sim.error("slam") * 100, 0)}\\,\\text{cm},\\quad \\text{dead reckoning off by } ${num(sim.error("dr") * 100, 0)}\\,\\text{cm}`,
+        ];
+        if (spread !== null) lines.push(`\\text{map uncertainty (mean 95\\% radius)} = ${num(spread * 100, 0)}\\,\\text{cm}`);
+        lines.push({ note: sparkline(sim), cls: "learn-spark" });
+        const last = sim.closures[sim.closures.length - 1];
+        lines.push({
+          note: !last ? "No loop closed yet: every landmark so far has been seen only on this pass."
+            : `Loop closed at ${num(last.t, 0)} s: it saw landmark ${last.j + 1} again after a long gap.`,
+          cls: "verdict",
+        });
+        return lines;
+      },
+    },
   ];
 
   /* ---------- lesson helpers ---------- */
+
+  function restart7() {
+    s7.sim.reset();
+    s7.trace = [];
+    s7.t0 = 0;
+    if (s7.sim.mode === "follow") {
+      s7.sim.replan();
+      s7.iterations = s7.sim.iterations;
+      s7.reveal = 0; // the passes appear one by one before the arm moves
+    } else {
+      s7.iterations = [];
+      s7.reveal = 1;
+    }
+    render();
+  }
+  function markChart7() {
+    s7.t0 = s7.sim.t;
+    s7.trace = [];
+  }
+
+  /** Map uncertainty over time, as a small inline chart with loop closures marked. */
+  function sparkline(sim) {
+    const h = sim.history;
+    if (h.length < 2) return "";
+    const W = 300, H = 56, t0 = h[0].t, t1 = h[h.length - 1].t;
+    const max = Math.max(0.05, ...h.map((p) => p.spread ?? 0));
+    const X = (t) => ((t - t0) / Math.max(1e-6, t1 - t0)) * W;
+    const Y = (v) => H - 4 - (v / max) * (H - 10);
+    const pts = h.filter((p) => p.spread !== null).map((p) => `${X(p.t).toFixed(1)},${Y(p.spread).toFixed(1)}`).join(" ");
+    const marks = sim.closures.filter((c) => c.t >= t0).map((c) => `<line x1="${X(c.t).toFixed(1)}" x2="${X(c.t).toFixed(1)}" y1="2" y2="${H}" stroke="var(--teal)" stroke-dasharray="3 3"/>`).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Map uncertainty over time">${marks}<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg><span class="small subtle">map uncertainty over time; dashed lines are loop closures</span>`;
+  }
 
   let armSliders = [];
   let targetSliders = [];
@@ -766,14 +1087,32 @@ export function start(root) {
     // Each visit to the IK lesson starts from home, so the solve it shows is
     // the same one every time rather than whatever lesson 5 left behind.
     if (l.short === "IK and the Jacobian") { s3.q = [...ARM6.home]; s3.singular = null; startSolve(); }
+    if (l.short === "iLQR and MPC") restart7();
     render();
   }
 
-  function render() {
+  // Lessons with a tick() animate: physics every frame, the math a few times a second.
+  let animLast = 0, mathClock = 0;
+  function animate(now) {
+    const dt = animLast ? Math.min(0.05, (now - animLast) / 1000) : 0;
+    animLast = now;
+    const l = lesson();
+    if (active && l.tick) {
+      l.tick(dt);
+      mathClock += dt;
+      const math = mathClock > 0.2;
+      if (math) mathClock = 0;
+      render(math);
+    }
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+
+  function render(withMath = true) {
     const l = lesson();
     let result;
     if (l.dim === "2d") {
-      const g = begin2d(l.box);
+      const g = begin2d(l.box, l.grid ?? 0.5);
       if (!g) return;
       result = l.draw(g);
     } else {
@@ -781,6 +1120,7 @@ export function start(root) {
       result = l.draw();
       vp.requestRender();
     }
+    if (!withMath) return;
     mathHost.innerHTML = l.math(result).map((m) => (typeof m === "string"
       ? `<div class="eq live">${row(m)}</div>`
       : `<p class="${m.cls ?? "eq-note"}">${m.note}</p>`)).join("");

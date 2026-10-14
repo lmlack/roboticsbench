@@ -1,4 +1,4 @@
-/* Learn: a six-step class. Only what the shared classes do not cover. */
+/* Learn: an eight-step class. Only what the shared classes do not cover. */
 
 /* Home page: the class leads in, above the six tool cards. */
 .learn-banner {
@@ -20,7 +20,7 @@
 
 /* Lesson picker: numbered stops along a line, the current one lit. */
 .learn-steps {
-  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px;
+  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px;
   max-width: 980px; margin: 0 auto 18px; counter-reset: step;
 }
 .learn-steps button {
@@ -61,6 +61,7 @@
 }
 .learn-math { display: grid; gap: 4px; min-width: 0; }
 .learn-math .eq-note { margin: 6px 0 0; }
+.learn-math .learn-spark { margin: 8px 0 0; display: grid; gap: 2px; }
 .learn-nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
 
 @media (max-width: 960px) {
@@ -73,7 +74,7 @@
   .learn-banner .icon svg { width: 22px; height: 22px; }
   .learn-banner-text { flex: 1 1 0; }
   .learn-banner-go { display: none; }
-  /* Six titles do not fit a phone; the numbers do, and the panel says the name. */
+  /* Eight titles do not fit a phone; the numbers do, and the panel says the name. */
   .learn-steps .label { display: none; }
   .learn-sliders { grid-template-columns: minmax(0, 1fr); }
   .learn-next-name { display: none; }
