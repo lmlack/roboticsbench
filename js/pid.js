@@ -4,7 +4,7 @@
 
 import { SYSTEMS, Simulation } from "./pid-sim.js";
 import { ILQRController, LQRController, MPC, fromVec } from "./optctl.js";
-import { cssVar, el, evalNumber, fmt, segmented } from "./util.js";
+import { cssVar, dockWhenNarrow, el, evalNumber, fmt, segmented } from "./util.js";
 import { createMathPanel } from "./pid-math.js";
 import { createOptMath } from "./optctl-math.js";
 
@@ -191,6 +191,8 @@ export function start(root) {
   });
 
   // ---- Buttons and toggles ----
+  // On a phone, Kick, Pause and Reset sit right under the animation.
+  dockWhenNarrow($("#pid-kick").closest(".side-section"), $("#pid-stage-wrap").closest(".panel"));
   $("#pid-kick").addEventListener("click", () => sim.kick());
   const pauseBtn = $("#pid-pause");
   pauseBtn.addEventListener("click", () => {
