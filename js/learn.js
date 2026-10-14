@@ -355,6 +355,7 @@ export function start(root) {
       title: "Frames: where is anything?",
       part: "Part 1 · Where things are",
       short: "Frames",
+      symbols: [["W,\\ B", "the world frame (fixed to the room) and the robot's base frame"], ["p_B,\\ p_W", "the tool tip's position measured from the base, and from the world"], ["\\varphi", "the angle the base is turned"], ["t", "where the base sits in the world"], ["R(\\varphi)", "the rotation matrix that turns by the base's angle"], ["T_{WB}", "the transform from the base frame to the world frame: R and t in one matrix"]],
       dim: "2d",
       box: { x0: -0.9, x1: 2.7, y0: -0.6, y1: 2.4 },
       hint: "Move the base with the sliders",
@@ -404,6 +405,7 @@ export function start(root) {
       title: "Forward kinematics: angles in, position out",
       part: "Part 2 · A flat arm",
       short: "Forward kinematics",
+      symbols: [["\\theta_1,\\ \\theta_2", "the two joint angles"], ["\\ell_1,\\ \\ell_2", "the two link lengths"], ["x,\\ y", "where the tip ends up"], ["\\varphi", "which way the tip points"], ["T_{BT}", "the transform from the base to the tool (tip)"]],
       dim: "2d",
       box: { x0: -1.9, x1: 1.9, y0: -1.9, y1: 1.9 },
       hint: "Turn the joints with the sliders",
@@ -454,6 +456,7 @@ export function start(root) {
       title: "Inverse kinematics: position in, angles out",
       part: "Part 2 · A flat arm",
       short: "Inverse kinematics",
+      symbols: [["x,\\ y", "the target the tip should reach"], ["r", "the target's distance from the base"], ["\\theta_1,\\ \\theta_2", "the joint angles we're solving for"], ["\\ell_1,\\ \\ell_2", "the two link lengths"], ["\\operatorname{atan2}(y, x)", "the angle of the point (x, y), in the right quadrant"]],
       dim: "2d",
       box: { x0: -1.9, x1: 1.9, y0: -1.9, y1: 1.9 },
       hint: "Drag anywhere to move the target",
@@ -509,6 +512,7 @@ export function start(root) {
       title: "Rotations in 3D, and SO(3)",
       part: "Part 3 · A real arm in 3D",
       short: "Rotations, SO(3)",
+      symbols: [["\\psi,\\ \\theta,\\ \\varphi", "yaw, pitch and roll: turns about Z, Y and X"], ["R_z,\\ R_y,\\ R_x", "a turn about one axis"], ["R", "the combined rotation matrix; its columns are the turned axes"], ["R^\\top", "R transposed: rows and columns swapped"], ["I", "the identity matrix, no turn at all"], ["\\det R", "the determinant: +1 for a real rotation, −1 for a mirror"]],
       dim: "3d",
       body: () => `
         <p>Moving to 3D, positions are easy: just add a third number. Turning is the tricky part. In 2D it was one angle. In 3D it takes three.</p>
@@ -558,6 +562,7 @@ export function start(root) {
       title: "Forward kinematics in 3D",
       part: "Part 3 · A real arm in 3D",
       short: "FK in 3D",
+      symbols: [["q_i", "the angle of joint i"], ["a_i", "the axis joint i turns about"], ["\\ell_i", "the offset along link i to the next joint"], ["T_i", "joint i's transform: shift along its link, then turn"], ["T_{WT}", "the transform from the world to the tool"], ["R,\\ p", "the tool's rotation (which way it points) and position"]],
       dim: "3d",
       body: () => `
         <p>This is lesson 2's forward kinematics with lesson 4's 3D rotations. An industrial arm has <b>six joints</b>.</p>
@@ -601,6 +606,7 @@ export function start(root) {
       title: "Inverse kinematics in 3D, and the Jacobian",
       part: "Part 3 · A real arm in 3D",
       short: "IK and the Jacobian",
+      symbols: [["e", "the error: target position minus where the tip is"], ["q,\\ \\Delta q", "the joint angles, and the change made to them each step"], ["J,\\ J_v", "the Jacobian (how the tip moves per joint), and its top three rows for position"], ["\\lambda", "damping: keeps each step sensible near a singularity"], ["I", "the identity matrix"], ["w", "manipulability: how far the arm is from a singularity, zero at one"]],
       dim: "3d",
       body: () => `
         <p>Lesson 3 solved a two-link arm with one triangle. Six joints have no tidy formula like that, so arms are usually solved step by step instead.</p>
@@ -683,6 +689,7 @@ export function start(root) {
       title: "Planning ahead: iLQR and MPC",
       part: "Part 4 · Beyond the arm",
       short: "iLQR and MPC",
+      symbols: [["J", "the cost the plan tries to make as small as possible"], ["e_k,\\ e_N", "how far the arm is from straight up at step k, and at the last step"], ["\\tau_k", "the motor torque at step k"], ["Q,\\ Q_f", "how much being away from the goal costs along the way, and at the end"], ["R", "how much using the motor costs"], ["mgL", "mass × gravity × length: the torque needed to hold the arm out level"], ["\\bar\\tau_k", "the torque the plan asks for at step k"]],
       dim: "2d",
       box: { x0: -1.6, x1: 4.0, y0: -1.25, y1: 2.95 },
       gridLabel: false,
@@ -828,6 +835,7 @@ export function start(root) {
       title: "SLAM: building the map as you go",
       part: "Part 4 · Beyond the arm",
       short: "SLAM",
+      symbols: [["\\mu", "everything the filter estimates, in one list"], ["x,\\ y,\\ \\theta", "the robot's position and heading"], ["m_j", "where landmark j is on the map"], ["\\Sigma", "the covariance: how sure it is of each number, and how their errors are linked"]],
       dim: "2d",
       box: { x0: -0.3, x1: 10.3, y0: -0.4, y1: 7.6 },
       grid: 1,
@@ -836,7 +844,7 @@ export function start(root) {
         <p>Lesson 1 asked "where is anything?" This last step asks it from the robot's side, with no map to go on.</p>
         <p>The Localization tab finds a robot on a map you hand it. <b>SLAM</b>, <i>simultaneous localization and mapping</i>, has to build the map and find itself on it at the same time.</p>
         <p>This robot drives a loop with a short-range sensor. The first time it sees a landmark, it adds it to its map where the measurement says, and that landmark picks up all the robot's uncertainty so far. The crosses are its map and the ellipses show how sure it is. Small wheel errors add up as it goes, so landmarks it maps later are less certain.</p>
-        <p>Then it gets back to the start and sees its first landmarks again. That's a <b>loop closure</b>. The filter, an <b>EKF</b> (<i>extended Kalman filter</i>, like on the Localization tab), has kept track of how every landmark's error is tied to the robot's. So that one sighting fixes the robot and pulls the whole map back into place.</p>
+        <p>Then it gets back to the start and sees its first landmarks again. That's a <b>loop closure</b>. The filter, an <b>EKF</b> (<i>extended Kalman filter</i>, like within the Localization tab), has kept track of how every landmark's error is tied to the robot's. So that one sighting fixes the robot and pulls the whole map back into place.</p>
         <div class="learn-try"><b>Try it</b><ul><li>Watch the chart below the map drop when the loop closes.</li><li>Shrink the sensor range or turn up wheel slip so it drifts more before it gets back.</li><li>Compare dead reckoning (dashed), which never looks at landmarks, so it just keeps drifting.</li></ul></div>
         <p class="learn-up-next"><b>That's the class.</b> You've gone from frames to a robot mapping a place it's never seen. Each tab up top goes deeper on one of these.</p>`,
       controls() {
@@ -1161,7 +1169,18 @@ export function start(root) {
     if (!withMath) return;
     mathHost.innerHTML = l.math(result).map((m) => (typeof m === "string"
       ? `<div class="eq live">${row(m)}</div>`
-      : `<p class="${m.cls ?? "eq-note"}">${m.note}</p>`)).join("");
+      : `<p class="${m.cls ?? "eq-note"}">${m.note}</p>`)).join("") + symbolsHtml(l);
+  }
+
+  /** "What the symbols mean": every symbol in the lesson's math, in plain words. */
+  const symbolCache = new Map();
+  function symbolsHtml(l) {
+    if (!l.symbols) return "";
+    if (!symbolCache.has(l)) {
+      symbolCache.set(l, `<div class="learn-symbols"><p class="learn-symbols-head">What the symbols mean</p><dl>${l.symbols
+        .map(([sym, meaning]) => `<dt>${inl(sym)}</dt><dd>${meaning}</dd>`).join("")}</dl></div>`);
+    }
+    return symbolCache.get(l);
   }
 
   // Lesson 3: press or drag anywhere on the canvas to place the target.
