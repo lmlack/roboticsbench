@@ -132,7 +132,7 @@
     <a class="card fin-pid" href="#pid">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 18c3 0 3-12 6-12s3 9 5 9 2-5 4-5 2 2 5 2"/><path d="M2 12h20" stroke-dasharray="2 2.5" opacity=".6"/></svg></span>
       <h2>Control</h2>
-      <p>PID, MPC and iLQR on a drone, an arm and an inverted pendulum, with the math live.</p>
+      <p>PID, LQR, MPC and iLQR on a drone, an arm and an inverted pendulum, with the math live.</p>
     </a>
   </div>
 </section>
@@ -417,7 +417,7 @@
   <div class="tool-head">
     <h1>Control</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Three ways to drive the same systems. <b>PID</b> (proportional, integral, derivative) reacts to the error you have right now. <b>MPC</b> (model predictive control) plans a couple of seconds ahead, over and over. <b>iLQR</b> (iterative linear quadratic regulator) works out one whole plan, then follows it. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
+    <p>Four ways to drive the same systems. <b>PID</b> (proportional, integral, derivative) reacts to the error you have right now. <b>LQR</b> (linear-quadratic regulator) uses one fixed gain on the whole state, worked out from a model. <b>MPC</b> (model predictive control) plans a couple of seconds ahead, over and over. <b>iLQR</b> (iterative linear quadratic regulator) works out one whole plan, then follows it. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
   </div>
 
   <div class="pid-top">
@@ -426,6 +426,7 @@
         <span class="eyebrow">Controller</span>
         <div class="segmented" id="pid-mode" role="group" aria-label="Controller">
           <button type="button" data-v="pid" aria-pressed="true">PID</button>
+          <button type="button" data-v="lqr" aria-pressed="false">LQR</button>
           <button type="button" data-v="mpc" aria-pressed="false">MPC</button>
           <button type="button" data-v="ilqr" aria-pressed="false">iLQR</button>
         </div>
@@ -476,7 +477,7 @@
           <input type="range" id="opt-horizon" min="0.5" max="2.5" step="0.1" value="2">
         </div>
         <p class="small" id="opt-stats" role="status"></p>
-        <label class="check"><input type="checkbox" id="opt-ghosts" checked> Show the plan</label>
+        <label class="check" id="opt-ghosts-row"><input type="checkbox" id="opt-ghosts" checked> Show the plan</label>
       </div>
 
       <div class="side-section pid-only">

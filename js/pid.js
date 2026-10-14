@@ -3,7 +3,7 @@
 // error and controller output.
 
 import { SYSTEMS, Simulation } from "./pid-sim.js";
-import { ILQRController, MPC, fromVec } from "./optctl.js";
+import { ILQRController, LQRController, MPC, fromVec } from "./optctl.js";
 import { cssVar, el, evalNumber, fmt, segmented } from "./util.js";
 import { createMathPanel } from "./pid-math.js";
 import { createOptMath } from "./optctl-math.js";
@@ -50,6 +50,10 @@ export function start(root) {
 
   // ---- Controller picker ----
   const MODE_TEXT = {
+    lqr: {
+      title: "LQR, the linear-quadratic regulator",
+      about: "One fixed gain on the whole state, worked out once from a model of the system near the target. No plan, nothing to re-solve. It starts near the target, like PID, because it only knows the system there.",
+    },
     mpc: {
       title: "MPC, model predictive control",
       about: "Plans the next couple of seconds from where the system is now, takes the first step, and plans again 20 times a second. The faded copies show where it expects to go.",
@@ -60,9 +64,13 @@ export function start(root) {
     },
   };
   const MODE_BLURB = {
+    lqr: {
+      cartpole: "LQR starts the pole near upright, like PID. Its gain is built for a pole that's almost balanced, so it can't swing one up from hanging.",
+    },
     cartpole: "On MPC and iLQR the pivot turns freely and the pole starts hanging straight down, so the controller has to swing it up first. PID can't do that: it only ever pushes against the error it sees right now.",
   };
   function makeController(k) {
+    if (mode === "lqr") return new LQRController(k);
     if (mode === "mpc") return new MPC(k, { N: Math.round(horizon / 0.05), dt: 0.05 });
     if (mode === "ilqr") return new ILQRController(k);
     return null;
@@ -82,9 +90,10 @@ export function start(root) {
       $("#opt-title").textContent = MODE_TEXT[mode].title;
       $("#opt-about").textContent = MODE_TEXT[mode].about;
       $("#opt-horizon-row").hidden = mode !== "mpc";
+      $("#opt-ghosts-row").hidden = mode === "lqr";
     }
     const blurb = $("#pid-mode-blurb");
-    blurb.textContent = opt ? (MODE_BLURB[key] ?? "") : "";
+    blurb.textContent = !opt ? "" : mode === "lqr" ? (MODE_BLURB.lqr[key] ?? "") : (MODE_BLURB[key] ?? "");
     blurb.hidden = !blurb.textContent;
     const sys = SYSTEMS[key];
     $("#pid-blurb").textContent = opt ? sys.blurbOpt ?? sys.blurb : sys.blurb;
@@ -325,7 +334,7 @@ export function start(root) {
     const badge = $("#pid-badge");
     // The wrapped value the charts use, so a free pole reads 0°, not 360°.
     const y = sys.display(sim.history.length ? sim.history[sim.history.length - 1].y : sys.measure(sim.state));
-    if (key === "cartpole" && mode === "pid" && Math.abs(sim.state.th) > 90 * DEG) {
+    if (key === "cartpole" && !sim.free && Math.abs(sim.state.th) > 90 * DEG) {
       badge.textContent = "Fallen. Press Reset.";
       badge.className = "sim-badge bad";
     } else {
@@ -1061,7 +1070,9 @@ export function start(root) {
 
     const stats = $("#opt-stats");
     const o = sim.opt;
-    if (mode === "mpc" && o?.plan) {
+    if (mode === "lqr" && o?.K) {
+      stats.textContent = "Same gain every step. Change the target and it works out a new one.";
+    } else if (mode === "mpc" && o?.plan) {
       stats.textContent = `Re-planning every ${fmt(o.dt * 1000, 0)} ms, ${fmt(o.N * o.dt, 1)} s ahead. ${o.solves} plans so far.`;
     } else if (mode === "ilqr" && o?.plan) {
       const T = o.plan.U.length * o.dt;

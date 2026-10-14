@@ -1,5 +1,5 @@
-// "The math" for MPC and iLQR: the cost both minimize, how each one uses the
-// solver, and live numbers from the current plan. The plant block is shared
+// "The math" for LQR, MPC and iLQR: the cost they minimize, how each one gets
+// its input, and live numbers from the current gain or plan. The plant block is shared
 // with PID and filled in by pid-math.js.
 
 import { SYSTEMS } from "./pid-sim.js";
@@ -28,6 +28,7 @@ export function createOptMath(root, sim) {
 
   function update(key, mode) {
     if (mode === "pid" || !sim.opt) return;
+    if (mode === "lqr") return updateLqr(key);
     const m = MODELS[key];
     const sys = SYSTEMS[key];
     const u = U_SYM[key];
@@ -76,6 +77,41 @@ export function createOptMath(root, sim) {
         : `<div class="eq live">${row(`${u} = ${u}^\\star + K_\\infty\\,e,\\quad K_\\infty = (${ctrl.hold.map((k) => num(k, 1)).join(",\\ ")})`)}</div>
            <p class="small">The plan is done, so a steady LQR holds the goal. A kick or a new target starts a fresh plan.</p>`;
     }
+    block("#math-opt-live", live);
+  }
+
+  /** LQR: no horizon and no end cost, just one gain from the Riccati equation. */
+  function updateLqr(key) {
+    const m = MODELS[key];
+    const sys = SYSTEMS[key];
+    const u = U_SYM[key];
+    const ctrl = sim.opt;
+    const goal = m.goal(sim.sp);
+    // The code adds K e with K negative; the page writes the usual u* − K e.
+    const K = (ctrl.K ?? ctrl.gainFor(sim.sp)).map((k) => -k);
+
+    block("#math-opt-cost", `
+      <p class="eyebrow">What it minimizes</p>
+      <div class="eq">${row(`J = \sum_{k=0}^{\infty} \Big( e_k^\top Q\, e_k + R\,(${u}_k - ${u}^\star)^2 \Big)`)}</div>
+      <p class="eq-note">${inl("e_k")} is how far the state ${inl(STATE[key])} is from the goal at step ${inl("k")}. ${inl(`${u}^\star`)} is the input that holds the goal still. The sum runs forever, so there's no end cost and no horizon.</p>
+      <div class="eq live">${row(`Q = ${diag(m.Q)},\quad R = ${num(m.R, 2)}`)}</div>
+      <div class="eq live">${row(`${u}^\star = ${num(goal.u)}${unit(sys.uUnit)}`)}</div>
+      <p class="small subtle">The same weights MPC and iLQR use. Big ${inl("Q")} means "get there fast", big ${inl("R")} means "go easy on the motor".</p>`);
+
+    block("#math-opt-solve", `
+      <p class="eyebrow">LQR: one gain, worked out once</p>
+      <div class="eq">${row(`e_{k+1} \approx A\,e_k + B\,(${u}_k - ${u}^\star)`)}</div>
+      <p class="eq-note">First the system is linearized at the goal over a ${num(ctrl.dt * 1000, 0)} ms step: ${inl("A")} says how the error carries on by itself, ${inl("B")} how the input changes it. That's only true near the goal.</p>
+      <div class="eq">${row(`P = Q + A^\top P A - A^\top P B\,(R + B^\top P B)^{-1} B^\top P A`)}</div>
+      <div class="eq">${row(`K = (R + B^\top P B)^{-1} B^\top P A,\qquad ${u} = ${u}^\star - K\,e`)}</div>
+      <p class="eq-note">${inl("P")} is the cost still to come from any error, and the Riccati equation above is solved by running it until ${inl("P")} stops changing. That's iLQR's backward pass, run forever on a system that never changes. So LQR is the steady version of what MPC and iLQR do. It's also what iLQR hands over to once its plan is done.</p>`);
+
+    const e = ctrl.e ?? new Array(K.length).fill(0);
+    let live = `<p class="eyebrow">Right now</p>`;
+    live += `<div class="eq live">${row(`K = (${K.map((k) => num(k, 1)).join(",\ ")})`)}</div>`;
+    live += `<div class="eq live">${row(`e = (${e.map((v) => num(v, 3)).join(",\ ")})`)}</div>`;
+    live += `<div class="eq live">${row(`${u} = ${num(goal.u)} - K\,e = ${num(sim.last.raw ?? sim.last.u)}${unit(sys.uUnit)}`)}</div>`;
+    live += `<p class="small subtle">${sim.last.saturated ? "That's past the actuator limit, so it's clipped. LQR doesn't know about limits." : "Each entry of K is a P or D gain on one part of the state, all chosen together."}</p>`;
     block("#math-opt-live", live);
   }
 
