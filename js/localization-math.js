@@ -98,6 +98,14 @@ export function createMathPanel(root, sim) {
       `${inl("B")} is the 5 × 5 × 5 block of cells around the mode. The global mean is meaningless when the belief has two peaks.`),
   ].join("");
 
+  $("#loc-math-kfekf").innerHTML = [
+    step("\\bar x = F x + B u,\\quad z = H x",
+      `<b>Kalman filter (KF):</b> the models are straight lines (matrices). A Gaussian stays a Gaussian, so the filter is exact. That's the <a href="#kalman">Kalman tab</a>.`),
+    step("\\bar x = g(u, x),\\quad z = h(x)",
+      `<b>Extended Kalman filter (EKF):</b> the robot turns, and range and bearing are curves, so the models are functions. The EKF runs the same equations, but swaps ${inl("F")} and ${inl("H")} for their slopes at the current estimate, ${inl("G = \\partial g / \\partial x")} and ${inl("H = \\partial h / \\partial x")}.`),
+    `<p class="eq-note">That works while the curve is nearly straight across the filter's uncertainty. When it isn't, like right after a kidnap, the EKF can go wrong. That's what the UKF and the particle filter are for.</p>`,
+  ].join("");
+
   $("#loc-math-predict").innerHTML = [
     step("\\bar\\mu = g(u, \\mu)"),
     step("\\bar\\Sigma = G\\,\\Sigma\\,G^\\top + V M V^\\top"),
