@@ -127,7 +127,7 @@
     <a class="card fin-plan" href="#planning">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V14h6V8h6V4"/><circle cx="4" cy="20" r="1.6" fill="currentColor"/><path d="M16 4h4M18 2v4"/><path d="M13 14h6v6h-6z" opacity=".55"/></svg></span>
       <h2>Motion planning</h2>
-      <p>Draw or upload a map, then race A*, Dijkstra, RRT and RRT* to the goal.</p>
+      <p>Draw or upload a map, then race A*, RRT, PRM and more to the goal. Then plan for an arm in joint angles.</p>
     </a>
     <a class="card fin-pid" href="#pid">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 18c3 0 3-12 6-12s3 9 5 9 2-5 4-5 2 2 5 2"/><path d="M2 12h20" stroke-dasharray="2 2.5" opacity=".6"/></svg></span>
@@ -935,7 +935,7 @@
   <div class="tool-head">
     <h1>Motion planning</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Draw walls, move the start and goal, and watch each planner search the grid, or scrub the search back and forth one expansion at a time. Bring your own map as a text file. The table runs every planner on the same map.</p>
+    <p>Draw walls, move the start and goal, and watch each planner search the grid, or scrub the search back and forth one expansion at a time. Bring your own map as a text file. The table runs every planner on the same map. <a href="#plan-arm" data-jump>Further down</a>, the same search plans for a robot arm.</p>
   </div>
 
   <div class="pid-top">
@@ -989,7 +989,7 @@
           <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;background:color-mix(in oklab, var(--accent) 20%, var(--accent-soft));border:1px solid var(--line)"></span>Closed</span>
           <span class="chip"><span style="display:inline-block;width:12px;height:12px;margin-right:6px;background:color-mix(in oklab, var(--highlight) 50%, var(--panel))"></span>Open</span>
           <span class="chip"><span style="display:inline-block;width:14px;height:4px;margin-right:6px;border-radius:2px;background:var(--accent)"></span>Path</span>
-          <span class="chip"><span style="display:inline-block;width:14px;height:1.5px;margin-right:6px;background:var(--line-strong)"></span>Tree</span>
+          <span class="chip"><span style="display:inline-block;width:14px;height:1.5px;margin-right:6px;background:var(--line-strong)"></span>Tree or roadmap</span>
         </div>
         <p class="small subtle" style="margin:8px 0 0">Drag on the grid to draw walls. Hold Shift or use the right button to erase. Drag the start or goal to move it.</p>
       </div>
@@ -1023,7 +1023,7 @@
             <tbody id="plan-compare-body"></tbody>
           </table>
         </div>
-        <p class="small subtle" style="margin:10px 0 0">Grid planners use the moves and heuristic set on the right. Optimal means the same length as Dijkstra. RRT and RRT* show iterations used, with seed 1; their paths are not tied to grid moves, so they can come in under 1.000.</p>
+        <p class="small subtle" style="margin:10px 0 0">Grid planners use the moves and heuristic set on the right. Optimal means the same length as Dijkstra. RRT and RRT* show iterations used and PRM its roadmap nodes, all with seed 1. Their paths aren't tied to grid moves, so they can come in under 1.000.</p>
       </div>
     </div>
 
@@ -1085,6 +1085,18 @@
         </div>
         <p class="small subtle" style="margin:0">Each run draws new samples. Narrow corridors, like the maze, need a small step.</p>
       </div>
+
+      <div class="side-section" id="plan-prm-opts" hidden>
+        <div class="gain">
+          <div class="gain-head"><label for="plan-samples">Samples <small>random points</small></label><input class="field" id="plan-samples-num" inputmode="decimal" aria-label="Number of samples"></div>
+          <input type="range" id="plan-samples" min="50" max="1500" step="50">
+        </div>
+        <div class="gain">
+          <div class="gain-head"><label for="plan-k">Neighbors <small>k, links tried per point</small></label><input class="field" id="plan-k-num" inputmode="decimal" aria-label="Neighbors per point"></div>
+          <input type="range" id="plan-k" min="2" max="30" step="1">
+        </div>
+        <p class="small subtle" style="margin:0">Each run scatters new points. Too few, or too few neighbors, and the roadmap breaks into pieces that never meet.</p>
+      </div>
     </div>
   </div>
 
@@ -1117,6 +1129,71 @@
         <p class="small subtle">Each new node takes the cheapest parent within <i>r</i>, then any neighbor within <i>r</i> that would be cheaper through the new node switches to it. Edges are checked cell by cell, so no corner is clipped.</p>
         <div class="eq live" id="plan-math-rlive"></div>
         <p class="small subtle" id="plan-math-rnote"></p>
+      </div>
+          <div class="math-block">
+        <p class="eyebrow">PRM: build once, ask many times</p>
+        <div class="eq" id="plan-math-prm-v"></div>
+        <div class="eq" id="plan-math-prm-e"></div>
+        <p class="small subtle" id="plan-math-prm-note"></p>
+        <div class="eq live" id="plan-math-prm-live"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel cs-panel" id="plan-arm" style="margin-top:16px">
+    <div class="panel-title"><h2>Planning for an arm: configuration space</h2></div>
+    <p>Everything above plans for a dot. A robot arm isn't a dot. It's two links that sweep across the room as the joints turn, and any part of it can hit something. So instead of planning in the room, plan in joint angles. A pose of this arm is just two numbers, θ<sub>1</sub> and θ<sub>2</sub>, which makes every pose one point in the picture on the right. Shade every pose where the arm hits something, and what's left is a grid map, the same kind A* searches above.</p>
+    <div class="cs-row">
+      <figure class="cs-fig">
+        <div class="cs-wrap"><canvas id="cs-work" role="img" aria-label="The arm and obstacles, seen from above. Drag an obstacle to move it."></canvas></div>
+        <figcaption class="small subtle">The room, seen from above. Drag an obstacle to move it. The dashed circle is as far as the tip reaches.</figcaption>
+      </figure>
+      <figure class="cs-fig">
+        <div class="cs-wrap"><canvas id="cs-map" role="img" aria-label="Configuration space: joint 1 angle across, joint 2 angle up. Shaded poses hit an obstacle."></canvas></div>
+        <figcaption class="small subtle">Configuration space (C-space): θ<sub>1</sub> across, θ<sub>2</sub> up, each from −180° to 180°. Shaded poses hit something. Drag the start or goal. Touch anywhere else to see the arm in that pose.</figcaption>
+      </figure>
+    </div>
+    <div class="cs-controls">
+      <div class="segmented" id="cs-preset" role="group" aria-label="Obstacle layout">
+        <button type="button" data-v="posts" aria-pressed="true">Two posts</button>
+        <button type="button" data-v="shelf" aria-pressed="false">Shelf</button>
+        <button type="button" data-v="gap" aria-pressed="false">Narrow gap</button>
+      </div>
+      <button type="button" class="btn solid" id="cs-play">Play</button>
+    </div>
+    <p class="small" id="cs-status" role="status"></p>
+    <div class="metrics">
+      <div class="metric"><p class="eyebrow">Poses blocked</p><div class="v" id="cs-m-blocked"></div></div>
+      <div class="metric"><p class="eyebrow">Path found</p><div class="v" id="cs-m-found"></div></div>
+      <div class="metric"><p class="eyebrow">Joint travel</p><div class="v" id="cs-m-cost"></div></div>
+      <div class="metric"><p class="eyebrow">Cells expanded</p><div class="v" id="cs-m-expanded"></div></div>
+    </div>
+    <div class="math-grid" style="margin-top:16px">
+      <div class="math-block">
+        <p class="eyebrow">Configuration space</p>
+        <div class="eq" id="cs-math-q"></div>
+        <div class="eq" id="cs-math-obs"></div>
+        <div class="eq" id="cs-math-free"></div>
+        <p class="small subtle" id="cs-math-obs-note"></p>
+        <p class="small subtle">One round post turns into a curved band, not a circle, because lots of different poses hit it. When link 1 can hit an obstacle, the band runs the whole height of the picture: with link 1 in the wrong place, no θ<sub>2</sub> helps.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">Checking one pose</p>
+        <div class="eq" id="cs-math-fk"></div>
+        <div class="eq" id="cs-math-fk2"></div>
+        <div class="eq" id="cs-math-hit"></div>
+        <div class="eq" id="cs-math-pad"></div>
+        <p class="small subtle" id="cs-math-hit-note"></p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">It wraps around</p>
+        <p class="small subtle">−180° and 180° are the same angle, so the left edge of the picture is the same as the right, and the top is the same as the bottom. Roll it up both ways and it's a donut (a torus). The search knows this, so a path can leave one edge and come back on the other. In the room, that's the arm turning the other way round.</p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">The search</p>
+        <div class="eq" id="cs-math-search"></div>
+        <p class="small subtle">A* on the C-space grid, 8-connected, the same rules as the map above. The cost is how far the joints turn in total, so the shortest path is the one that moves the joints least, not the one where the tip travels least. The heuristic is the octile distance from the map above, measured the short way round.</p>
+        <div class="eq live" id="cs-math-live"></div>
       </div>
     </div>
   </div>
