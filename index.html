@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>roboticsbench</title>
-<meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID, MPC and iLQR control, a Kalman filter, localization and motion planning.">
+<meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID, MPC and iLQR control, a Kalman filter, localization and SLAM, and motion planning.">
 <link rel="canonical" href="https://roboticsbench.gwark.dev/">
 <meta property="og:title" content="roboticsbench">
 <meta property="og:description" content="Six robotics tools that run in your browser: rotations, a URDF viewer, PID, MPC and iLQR control, a Kalman filter, localization and motion planning.">
@@ -683,7 +683,7 @@
   <div class="tool-head">
     <h1>Localization</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>A robot works out where it is from noisy odometry and range and bearing to known landmarks, with walls in the way. Five estimators read the same data. Turn on the wind to push the robot in a way none of them is told about.</p>
+    <p>A robot works out where it is from noisy odometry and range and bearing to known landmarks, with walls in the way. Five estimators read the same data, plus a sixth, SLAM, that has to build the map as it goes. Turn on the wind to push the robot in a way none of them is told about.</p>
   </div>
 
   <div class="pid-top">
@@ -691,6 +691,7 @@
       <label class="check loc-algo"><input type="checkbox" data-algo="pf" checked><span class="loc-swatch loc-c-pf"></span>Particle filter</label>
       <label class="check loc-algo"><input type="checkbox" data-algo="ekf" checked><span class="loc-swatch loc-c-ekf"></span>EKF</label>
       <label class="check loc-algo"><input type="checkbox" data-algo="ukf" checked><span class="loc-swatch loc-c-ukf"></span>UKF</label>
+      <label class="check loc-algo"><input type="checkbox" data-algo="slam" checked><span class="loc-swatch loc-c-slam"></span>EKF-SLAM</label>
       <label class="check loc-algo"><input type="checkbox" data-algo="grid"><span class="loc-swatch loc-c-grid"></span>Grid</label>
       <label class="check loc-algo"><input type="checkbox" data-algo="dr"><span class="loc-swatch loc-c-dr"></span>Dead reckoning</label>
     </div>
@@ -700,6 +701,7 @@
         <li><b>Particle filter:</b> many sampled guesses at the pose. Guesses that explain the measurements survive resampling, so it can hold several at once.</li>
         <li><b>EKF:</b> one Gaussian, updated by linearizing the motion and measurement models.</li>
         <li><b>UKF:</b> one Gaussian, carried through the models by seven sigma points instead of a linearization.</li>
+        <li><b>EKF-SLAM:</b> an EKF that is never given the map. It adds each landmark the first time it sees one, then improves the robot and the whole map together. Its faded crosses and ellipses are the map it has built.</li>
         <li><b>Grid:</b> a probability for every 25 cm cell and 22.5° heading. Slow to update, but it can hold any shape of belief.</li>
         <li><b>Dead reckoning:</b> adds up the odometry and ignores the landmarks.</li>
       </ul>
@@ -745,6 +747,7 @@
         <div class="loc-tiles">
           <div class="metric"><p class="eyebrow">Neff / N</p><div class="v" id="loc-m-neff"></div><div class="small subtle" id="loc-m-neff-sub"></div></div>
           <div class="metric"><p class="eyebrow">In view / in range</p><div class="v" id="loc-m-vis"></div><div class="small subtle" id="loc-m-vis-sub"></div></div>
+          <div class="metric"><p class="eyebrow">SLAM map</p><div class="v" id="loc-m-map"></div><div class="small subtle" id="loc-m-map-sub"></div></div>
         </div>
       </div>
 
@@ -885,6 +888,12 @@
         <div class="loc-steps" id="loc-math-ukf"></div>
         <div class="eq live" id="loc-math-ukf-live"></div>
         <p class="small verdict" id="loc-math-ukf-verdict"></p>
+      </div>
+      <div class="math-block">
+        <p class="eyebrow">EKF-SLAM: the map is part of the state</p>
+        <div class="loc-steps" id="loc-math-slam"></div>
+        <div class="eq live" id="loc-math-slam-live"></div>
+        <p class="small verdict" id="loc-math-slam-verdict"></p>
       </div>
     </div>
   </div>

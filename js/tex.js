@@ -42,7 +42,9 @@ export function num(v, d = 2) {
   if (a !== 0 && (a < 10 ** -d || a >= 1e5)) {
     const e = Math.floor(Math.log10(a));
     const m = v / 10 ** e;
-    return `${m.toFixed(Math.max(1, d - 1))} \\times 10^{${e}}`;
+    // Braced, so a unit exponent after it ({…}^\\circ) cannot become a
+    // second superscript on the 10.
+    return `{${m.toFixed(Math.max(1, d - 1))} \\times 10^{${e}}}`;
   }
   const s = v.toFixed(d);
   return /^-0\.?0*$/.test(s) ? s.slice(1) : s;

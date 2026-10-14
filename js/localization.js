@@ -26,9 +26,10 @@ const ALGOS = [
   { key: "pf", name: "Particle filter", color: "--plot-measured" },
   { key: "ukf", name: "UKF", color: "--plot-i" },
   { key: "ekf", name: "EKF", color: "--plot-control" },
+  { key: "slam", name: "EKF-SLAM", color: "--plot-error" },
 ];
 // The table lists them in the order of the toggles.
-const TABLE_ORDER = ["pf", "ekf", "ukf", "grid", "dr"];
+const TABLE_ORDER = ["pf", "ekf", "ukf", "slam", "grid", "dr"];
 const NAME = Object.fromEntries(ALGOS.map((a) => [a.key, a.name]));
 const HINTS = {
   landmark: "Click to add or remove a landmark",
@@ -467,6 +468,10 @@ export function start(root) {
 
     if (on("ukf")) drawGaussian(ctx, g, sim.ukf, colors.ukf);
     if (on("ekf")) drawGaussian(ctx, g, sim.ekf, colors.ekf);
+    if (on("slam")) {
+      drawSlamMap(ctx, g);
+      drawGaussian(ctx, g, sim.slam, colors.slam);
+    }
 
     // Walls, with round caps: the collision and sight tests treat each wall
     // as every point within half its thickness of the center line.
@@ -662,7 +667,7 @@ export function start(root) {
     for (const p of trail) {
       for (const a of algos) need = Math.max(need, Math.hypot(p[a.key][0] - p.x, p[a.key][1] - p.y));
     }
-    for (const key of ["ekf", "ukf"]) {
+    for (const key of ["ekf", "ukf", "slam"]) {
       if (!on(key)) continue;
       const e = sim[key].ellipse();
       const [mx, my] = sim[key].mu;
@@ -718,8 +723,8 @@ export function start(root) {
       ctx.globalAlpha = 1;
     }
 
-    // EKF and UKF 95% ellipses, true to scale here.
-    for (const key of ["ukf", "ekf"]) {
+    // EKF, UKF and SLAM 95% ellipses, true to scale here.
+    for (const key of ["ukf", "ekf", "slam"]) {
       if (!on(key)) continue;
       const e = sim[key].ellipse();
       const [mx, my] = sim[key].mu;
@@ -800,6 +805,45 @@ export function start(root) {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2.5;
       ctx.setLineDash(dashed ? [4, 3] : []);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The map SLAM has built: a cross at each landmark estimate inside its 95%
+   * ellipse, joined to the true landmark by a faint line when they differ.
+   */
+  function drawSlamMap(ctx, g) {
+    ctx.save();
+    for (const m of sim.slam.map()) {
+      const px = g.X(m.x), py = g.Y(m.y);
+      const t = sim.landmarks[m.j];
+      if (t) {
+        ctx.strokeStyle = colors.slam;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(g.X(t.x), g.Y(t.y));
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = colors.slam;
+      ctx.beginPath();
+      ctx.ellipse(px, py, Math.max(3, m.rx * g.s), Math.max(3, m.ry * g.s), -m.angle, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = colors.slam;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px - 5, py - 5);
+      ctx.lineTo(px + 5, py + 5);
+      ctx.moveTo(px - 5, py + 5);
+      ctx.lineTo(px + 5, py - 5);
       ctx.stroke();
     }
     ctx.restore();
@@ -989,6 +1033,13 @@ export function start(root) {
     set("#loc-m-vis", `${sim.z.length} / ${sim.inRange}`);
     set("#loc-m-vis-sub", `<span class="mono">${sim.blocked.length}</span> behind walls, range <span class="mono">${fmt(sim.params.maxRange, 1)} m</span>`);
 
+    const map = sim.slam.map();
+    const errs = map.filter((m) => sim.landmarks[m.j]).map((m) => Math.hypot(m.x - sim.landmarks[m.j].x, m.y - sim.landmarks[m.j].y));
+    set("#loc-m-map", `${map.length} / ${sim.landmarks.length}`);
+    set("#loc-m-map-sub", errs.length
+      ? `landmarks mapped, avg <span class="mono">${fmt(errs.reduce((a, b) => a + b, 0) / errs.length * 100, 0)} cm</span> off`
+      : "nothing mapped yet");
+
     const badge = $("#loc-badge");
     badge.hidden = !(sim.t - sim.bumpT < 1.2);
   }
@@ -1012,6 +1063,7 @@ export function start(root) {
       grid: "searching. Its small uniform floor lets cells near the new spot win as soon as the scans favor them.",
       ekf: `${off("ekf")}. It keeps one Gaussian near the old spot, and its gate rejects the new measurements as outliers, so it will not recover on its own.`,
       ukf: `${off("ukf")}. Like the EKF it keeps one Gaussian and gates out the new measurements.`,
+      slam: `${off("slam")}. It believes it is still at the old spot, so landmarks it sees from here either get gated out or, if new, get placed on its map in the wrong spot.`,
       dr: `${off("dr")}. It never uses the landmarks, so it cannot notice.`,
     };
     const reset = {
@@ -1019,6 +1071,7 @@ export function start(root) {
       grid: "uniform over every free cell, narrowing down.",
       ekf: `started from a broad guess at the map center, now ${off("ekf")}. When the guess is far from the truth, the linearization can settle on a wrong pose.`,
       ukf: `started from the same broad guess, now ${off("ukf")}. Its sigma points span the whole guess, so it usually copes with a far-off start better than the EKF.`,
+      slam: `kept the map it built and forgot only where it is, now ${off("slam")}. It re-finds itself against its own landmarks, the same way the EKF uses the given map.`,
       dr: `restarted from the map center guess, ${off("dr")}. It never uses the landmarks, so it stays wrong.`,
     };
     const lines = event.kind === "kidnap" ? kidnap : reset;
