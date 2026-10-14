@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULTS, DRIVE, PRESETS, Simulation, TRUE_Q, inDropout } from "../js/kalman-sim.js";
+import { DEFAULTS, DRIVE, KalmanFilter, PRESETS, Simulation, TRUE_Q, inDropout } from "../js/kalman-sim.js";
 
 // advance() caps its work per call for the UI, so long runs go a second at a time.
 function run(params, seconds, seed = 3, onStep) {
@@ -176,4 +176,43 @@ test("You steer: changing the target does not restart the run", () => {
   sim.set({ driveTarget: 2 });
   assert.equal(sim.t, t, "the clock keeps running");
   assert.ok(sim.history.length > 1, "and the history is kept");
+});
+
+test("outliers drag the estimate around, and gating on d² throws them out", () => {
+  const run = (gate) => {
+    const sim = new Simulation({ outliers: true, gate }, 3);
+    sim.warmUp();
+    let outliers = 0, rejected = 0, goodRejected = 0, readings = 0, worstJump = 0;
+    let prev = sim.filter.x[0][0];
+    for (let i = 0; i < 1200; i++) {
+      sim.advance(0.1);
+      const g = sim.last.gate;
+      if (g) {
+        readings++;
+        if (g.outlier) outliers++;
+        if (g.rejected) rejected++;
+        if (g.rejected && !g.outlier) goodRejected++;
+      }
+      worstJump = Math.max(worstJump, Math.abs(sim.filter.x[0][0] - prev));
+      prev = sim.filter.x[0][0];
+    }
+    return { ...sim.totalMetrics(), outliers, rejected, goodRejected, readings, worstJump };
+  };
+  const open = run(false), gated = run(true);
+  assert.ok(open.outliers > 40, `${open.outliers} outliers`);
+  assert.equal(open.rejected, 0);
+  // Every outlier is meters off, so the gate catches nearly all of them, and
+  // a good reading is past the 99% point only about 1% of the time.
+  assert.ok(gated.rejected - gated.goodRejected >= 0.95 * gated.outliers, JSON.stringify(gated));
+  assert.ok(gated.goodRejected <= 0.03 * gated.readings, JSON.stringify(gated));
+  assert.ok(gated.estRmse < 0.7 * open.estRmse, `rmse ${gated.estRmse} vs ${open.estRmse}`);
+  assert.ok(open.worstJump > 2 * gated.worstJump, `jumps ${open.worstJump} vs ${gated.worstJump}`);
+});
+
+test("d² is y²/S for a single reading", () => {
+  const f = new KalmanFilter();
+  f.reset([1, 0], [[0.5, 0], [0, 1]]);
+  const { y, S, d2 } = f.innovation([[3]], [[1, 0]], [[0.25]]);
+  assert.ok(Math.abs(y[0][0] - 2) < 1e-12 && Math.abs(S[0][0] - 0.75) < 1e-12);
+  assert.ok(Math.abs(d2 - 4 / 0.75) < 1e-12);
 });

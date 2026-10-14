@@ -354,7 +354,7 @@ export class ILQRController {
 
 /**
  * LQR as a controller: one fixed gain, worked out once around the goal, and
- * u = u* + K e from then on (K comes out negative). No plan and no horizon.
+ * u = u* + K e from then on, with K carrying its own sign. No plan, no horizon.
  * It's the steady version of what MPC and iLQR hand back at the end of a
  * plan, so it only knows the system near the goal.
  */
