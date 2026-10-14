@@ -276,6 +276,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 36px 24px 72px; }
 .btn.teal { background: var(--teal); border-color: var(--teal); color: var(--solid-fg); }
 .btn.teal:hover { filter: brightness(1.08); }
 .btn svg { width: 16px; height: 16px; }
+.btn:disabled { opacity: 0.45; cursor: default; transform: none; border-color: var(--line-strong); }
 
 .field {
   height: 36px; width: 100%; padding: 0 10px;
