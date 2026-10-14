@@ -734,7 +734,7 @@
       <summary class="small">How do they differ?</summary>
       <ul class="small muted">
         <li><b>Particle filter:</b> many sampled guesses at the pose. Guesses that explain the measurements survive resampling, so it can hold several at once.</li>
-        <li><b>EKF</b> (extended Kalman filter): one Gaussian, updated by linearizing the motion and measurement models.</li>
+        <li><b>EKF</b> (extended Kalman filter): one Gaussian, updated by linearizing the motion and measurement models. New to Kalman filters? Start with the <a href="#kalman">Kalman tab</a>.</li>
         <li><b>UKF</b> (unscented Kalman filter): one Gaussian, carried through the models by seven sigma points instead of a linearization.</li>
         <li><b>EKF-SLAM:</b> SLAM is simultaneous localization and mapping. This one is an EKF that is never given the map. It adds each landmark the first time it sees one, then improves the robot and the whole map together. Its faded crosses and ellipses are the map it has built.</li>
         <li><b>Graph SLAM:</b> also never given the map. It keeps the path as a chain of poses, one about every 40 cm, tied together by the odometry between them and by every landmark sighting. Each new pose re-solves the whole chain by least squares, so when it sees an old landmark again (a loop closure) the whole path pulls back into shape. Most real SLAM systems work this way. Its dotted line is the chain.</li>
@@ -912,6 +912,7 @@
       </div>
       <div class="math-block">
         <p class="eyebrow">EKF predict</p>
+        <p class="small subtle">The same predict and update as the <a href="#kalman">Kalman tab</a>, in 2D with a heading, and linearized because turning isn't a straight line.</p>
         <div id="loc-math-predict"></div>
         <div class="eq live" id="loc-math-predict-live"></div>
       </div>
