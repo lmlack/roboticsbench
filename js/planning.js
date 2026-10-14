@@ -757,12 +757,12 @@ export function start(root) {
     euclidean: "h(n) = \\sqrt{\\Delta x^2 + \\Delta y^2}",
   };
   const ALGO_F = {
-    bfs: "BFS: no priority. First found, first expanded.",
+    bfs: "BFS (breadth-first search): no priority. First found, first expanded.",
     dijkstra: `Dijkstra: ${inl("h = 0")}, so ${inl("f = g")}.`,
     greedy: `Greedy: ${inl("g")} ignored, so ${inl("f = h")}.`,
     astar: `A*: ${inl("\\varepsilon = 1")}.`,
     wastar: null, // filled live with the current ε
-    rrt: "RRT, RRT*: no priority. The tree grows toward random samples.",
+    rrt: "RRT, RRT* (rapidly-exploring random tree): no priority. The tree grows toward random samples.",
   };
   const mk = (tag, cls) => el(tag, { class: cls });
   tex($("#plan-math-f"), "f(n) = g(n) + \\varepsilon\\, h(n)");

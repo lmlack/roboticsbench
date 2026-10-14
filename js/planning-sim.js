@@ -12,7 +12,7 @@ const SQRT2 = Math.SQRT2;
 export const ALGOS = {
   bfs: {
     name: "BFS", kind: "grid",
-    blurb: "Expands cells in the order it finds them. It finds the fewest moves, which is the shortest path only when every move costs the same.",
+    blurb: "Breadth-first search. It expands cells in the order it finds them. It finds the fewest moves, which is the shortest path only when every move costs the same.",
   },
   dijkstra: {
     name: "Dijkstra", kind: "grid",
@@ -32,7 +32,7 @@ export const ALGOS = {
   },
   rrt: {
     name: "RRT", kind: "tree",
-    blurb: "Grows a tree toward random points until a branch reaches the goal. Finds a path quickly, but not a short one.",
+    blurb: "Rapidly-exploring random tree. It grows a tree toward random points until a branch reaches the goal. Finds a path quickly, but not a short one.",
   },
   rrtstar: {
     name: "RRT*", kind: "tree",
