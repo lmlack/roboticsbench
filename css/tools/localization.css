@@ -81,6 +81,10 @@
 .loc-drive p { margin: 0; max-width: 280px; }
 .loc-drive .loc-pad { width: max-content; }
 @media (max-width: 640px) {
+  /* Only short messages show on a phone, and on a solid pill so they read
+     over the map. The standing hint repeats the switch above the map. */
+  #loc-hint { background: var(--panel); color: var(--fg-muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  #loc-hint:empty { display: none; }
   .loc-table th, .loc-table td { padding: 4px; }
   .loc-table th.row { white-space: normal; }
   .loc-table .loc-swatch { width: 12px; }
