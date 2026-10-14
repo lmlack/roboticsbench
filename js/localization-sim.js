@@ -436,6 +436,180 @@ export function chol3(P) {
   return L;
 }
 
+// ---- EKF-SLAM ----
+
+/**
+ * EKF-SLAM: an EKF whose state is the robot's pose plus every landmark it has
+ * mapped so far, [x, y, θ, m1x, m1y, m2x, m2y, ...], with one covariance over
+ * all of it. It is never given the map. Landmarks are identified (the
+ * measurement says which one it is), so the hard part left is the
+ * estimation: a landmark seen for the first time is placed where the
+ * measurement says, inheriting the robot's uncertainty, and every later
+ * sighting refines the robot and the whole map together through the
+ * correlations in P. That is why seeing an old landmark again, a loop
+ * closure, tightens landmarks that are not even in view.
+ */
+export class EKFSLAM {
+  constructor() {
+    this.init(START, 0.1, 0.1, 0.05);
+  }
+
+  /** Start at a pose. keepMap holds on to the landmarks and their own covariance. */
+  init(pose, sx, sy, sth, keepMap = false) {
+    const robotP = [[sx * sx, 0, 0], [0, sy * sy, 0], [0, 0, sth * sth]];
+    if (keepMap && this.ids?.length) {
+      this.mu = [pose.x, pose.y, pose.th, ...this.mu.slice(3)];
+      const n = this.mu.length;
+      const P = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
+        if (i < 3 && j < 3) return robotP[i][j];
+        if (i < 3 || j < 3) return 0; // the new pose guess knows nothing about the map
+        return this.P[i][j];
+      }));
+      this.P = P;
+    } else {
+      this.mu = [pose.x, pose.y, pose.th];
+      this.P = robotP;
+      this.ids = []; // landmark index in the world, per map slot
+    }
+    this.last = null;
+    this.rejected = 0;
+    this.added = 0;
+  }
+
+  /** Same motion model as the EKF. Only the robot block moves; P_rm turns with it. */
+  predict(v, w, dt, k) {
+    const [x, y, th] = this.mu;
+    const tm = th + (w * dt) / 2;
+    const c = Math.cos(tm), s = Math.sin(tm);
+    this.mu[0] = x + v * dt * c;
+    this.mu[1] = y + v * dt * s;
+    this.mu[2] = wrap(th + w * dt);
+    const G = [[1, 0, -v * dt * s], [0, 1, v * dt * c], [0, 0, 1]];
+    const V = [[dt * c, (-v * dt * dt * s) / 2], [dt * s, (v * dt * dt * c) / 2], [0, dt]];
+    const [vv, vw] = noiseVar(v, w, k);
+    const M = [[vv + FLOOR.v * FLOOR.v, 0], [0, vw + FLOOR.w * FLOOR.w]];
+    const P = this.P, n = this.mu.length;
+    const Prr = [0, 1, 2].map((i) => [0, 1, 2].map((j) => P[i][j]));
+    const newRR = matAdd(matMul(matMul(G, Prr), transpose(G)), matMul(matMul(V, M), transpose(V)));
+    // Robot-map cross terms: rows 0-2 become G times themselves.
+    for (let j = 3; j < n; j++) {
+      const col = [P[0][j], P[1][j], P[2][j]];
+      for (let i = 0; i < 3; i++) {
+        const v2 = G[i][0] * col[0] + G[i][1] * col[1] + G[i][2] * col[2];
+        P[i][j] = v2;
+        P[j][i] = v2;
+      }
+    }
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) P[i][j] = i === j ? newRR[i][j] : (newRR[i][j] + newRR[j][i]) / 2;
+  }
+
+  /** Map slot of world landmark j, or -1 if it has not been mapped. */
+  slot(j) {
+    return this.ids.indexOf(j);
+  }
+
+  /** Put a newly seen landmark into the state, where this measurement says it is. */
+  addLandmark(j, r, b, R) {
+    const [x, y, th] = this.mu;
+    const a = th + b, c = Math.cos(a), s = Math.sin(a);
+    const P = this.P, n = this.mu.length;
+    // m = robot position + r in direction θ + b. Gr = ∂m/∂robot, Gz = ∂m/∂(r, b).
+    const Gr = [[1, 0, -r * s], [0, 1, r * c]];
+    const Gz = [[c, -r * s], [s, r * c]];
+    // Covariance of the new landmark with everything already in the state.
+    const cross = Array.from({ length: n }, (_, k) => [0, 1].map((i) => Gr[i][0] * P[0][k] + Gr[i][1] * P[1][k] + Gr[i][2] * P[2][k]));
+    const Prr = [0, 1, 2].map((i) => [0, 1, 2].map((jj) => P[i][jj]));
+    const Pmm = matAdd(matMul(matMul(Gr, Prr), transpose(Gr)), matMul(matMul(Gz, R), transpose(Gz)));
+    for (let k = 0; k < n; k++) P[k].push(cross[k][0], cross[k][1]);
+    P.push([...cross.map((cv) => cv[0]), Pmm[0][0], Pmm[0][1]]);
+    P.push([...cross.map((cv) => cv[1]), Pmm[1][0], Pmm[1][1]]);
+    this.mu.push(x + r * c, y + r * s);
+    this.ids.push(j);
+    this.added++;
+  }
+
+  /** Measurements carry the landmark's index; no map is passed in. */
+  update(z, sr, sb) {
+    const R = [[sr * sr, 0], [0, sb * sb]];
+    this.rejected = 0;
+    this.added = 0;
+    for (const m of z) {
+      let k = this.slot(m.j);
+      if (k < 0) {
+        this.addLandmark(m.j, m.r, m.b, R);
+        continue;
+      }
+      const P = this.P, mu = this.mu, n = mu.length;
+      const li = 3 + 2 * k;
+      const dx = mu[li] - mu[0], dy = mu[li + 1] - mu[1];
+      const q = dx * dx + dy * dy;
+      if (q < 1e-6) continue;
+      const sq = Math.sqrt(q);
+      const zhat = [sq, wrap(Math.atan2(dy, dx) - mu[2])];
+      // H is zero except for the robot block and this landmark's two columns.
+      const cols = [0, 1, 2, li, li + 1];
+      const Hs = [
+        [-dx / sq, -dy / sq, 0, dx / sq, dy / sq],
+        [dy / q, -dx / q, -1, -dy / q, dx / q],
+      ];
+      const PHt = Array.from({ length: n }, (_, i) => [0, 1].map((r) => cols.reduce((acc, c, t) => acc + P[i][c] * Hs[r][t], 0)));
+      const S = [0, 1].map((r) => [0, 1].map((c2) => cols.reduce((acc, c, t) => acc + Hs[r][t] * PHt[c][c2], 0) + R[r][c2]));
+      const Si = inv2(S);
+      const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
+      const d2 = nu[0] * (Si[0][0] * nu[0] + Si[0][1] * nu[1]) + nu[1] * (Si[1][0] * nu[0] + Si[1][1] * nu[1]);
+      const accepted = d2 <= GATE;
+      this.last = { j: m.j, nu, d2, accepted };
+      if (!accepted) {
+        this.rejected++;
+        continue;
+      }
+      const K = PHt.map(([a, b]) => [a * Si[0][0] + b * Si[1][0], a * Si[0][1] + b * Si[1][1]]);
+      for (let i = 0; i < n; i++) mu[i] += K[i][0] * nu[0] + K[i][1] * nu[1];
+      mu[2] = wrap(mu[2]);
+      // P ← P − K S Kᵀ, kept symmetric.
+      const KS = K.map(([a, b]) => [a * S[0][0] + b * S[1][0], a * S[0][1] + b * S[1][1]]);
+      for (let i = 0; i < n; i++) {
+        for (let j2 = i; j2 < n; j2++) {
+          const v2 = P[i][j2] - (KS[i][0] * K[j2][0] + KS[i][1] * K[j2][1]);
+          P[i][j2] = v2;
+          P[j2][i] = v2;
+        }
+      }
+    }
+  }
+
+  /** Drop world landmark j from the map, and shift the indices above it down. */
+  forget(j) {
+    const k = this.slot(j);
+    if (k >= 0) {
+      const li = 3 + 2 * k;
+      this.mu.splice(li, 2);
+      this.P.splice(li, 2);
+      for (const row of this.P) row.splice(li, 2);
+      this.ids.splice(k, 1);
+    }
+    this.ids = this.ids.map((i) => (i > j ? i - 1 : i));
+    if (this.last && this.last.j === j) this.last = null;
+  }
+
+  estimate() {
+    return { x: this.mu[0], y: this.mu[1], th: this.mu[2] };
+  }
+
+  ellipse() {
+    return ellipseOf(this.P);
+  }
+
+  /** The map as it stands: each landmark's estimate and 95% ellipse. */
+  map() {
+    return this.ids.map((j, k) => {
+      const li = 3 + 2 * k;
+      const Pm = [[this.P[li][li], this.P[li][li + 1]], [this.P[li + 1][li], this.P[li + 1][li + 1]]];
+      return { j, x: this.mu[li], y: this.mu[li + 1], ...ellipseOf(Pm) };
+    });
+  }
+}
+
 // ---- Dead reckoning ----
 
 /** Integrates the commanded motion and nothing else. */
@@ -1002,7 +1176,7 @@ export function planPath(grid, from, to) {
 
 // ---- The whole simulation ----
 
-export const ALGO_KEYS = ["dr", "pf", "ekf", "ukf", "grid"];
+export const ALGO_KEYS = ["dr", "pf", "ekf", "ukf", "grid", "slam"];
 
 export class Localization {
   constructor({ seed = 1, particles = 1000, walls = DEFAULT_WALLS } = {}) {
@@ -1018,6 +1192,7 @@ export class Localization {
     this.ekf = new EKF();
     this.ukf = new UKF();
     this.grid = new GridFilter();
+    this.slam = new EKFSLAM();
     this.wallsChanged();
     this.reset();
   }
@@ -1034,6 +1209,9 @@ export class Localization {
     this.ekf.init(START, 0.1, 0.1, 0.05);
     this.ukf.init(START, 0.1, 0.1, 0.05);
     this.grid.initAt(START);
+    // SLAM starts with an empty map. Its known start pose is what ties the
+    // map it builds to the world's coordinates.
+    this.slam.init(START, 0.1, 0.1, 0.05);
     this.history = [];
     this.trail = [];
     this.breakTrail = true;
@@ -1064,6 +1242,8 @@ export class Localization {
     this.ekf.init(c, 2.5, 2, Math.PI / 2);
     this.ukf.init(c, 2.5, 2, Math.PI / 2);
     this.grid.initUniform();
+    // SLAM keeps the map it built and forgets only where it is.
+    this.slam.init(c, 2.5, 2, Math.PI / 2, true);
   }
 
   /**
@@ -1131,6 +1311,7 @@ export class Localization {
 
   removeLandmark(j) {
     this.landmarks.splice(j, 1);
+    this.slam.forget(j);
     this.resense();
     this.z = [];
     for (const f of [this.ekf, this.ukf]) if (f.last && f.last.j >= this.landmarks.length) f.last = null;
@@ -1284,6 +1465,7 @@ export class Localization {
     this.pf.predict(u.v, u.w, DT, k);
     this.ekf.predict(u.v, u.w, DT, k);
     this.ukf.predict(u.v, u.w, DT, k);
+    this.slam.predict(u.v, u.w, DT, k);
 
     const { r: sr, b: sb } = this.sigma;
     const z = this.sense();
@@ -1291,6 +1473,7 @@ export class Localization {
     this.pf.update(z, this.landmarks, sr, sb);
     this.ekf.update(z, this.landmarks, sr, sb);
     this.ukf.update(z, this.landmarks, sr, sb);
+    this.slam.update(z, sr, sb);
     this.grid.step(u.v, u.w, DT, k, z, this.landmarks, sr, sb);
 
     this.t += DT;
@@ -1328,7 +1511,7 @@ export class Localization {
   estimates() {
     return {
       dr: this.dr.estimate(), pf: this.pf.estimate(), ekf: this.ekf.estimate(),
-      ukf: this.ukf.estimate(), grid: this.grid.estimate(),
+      ukf: this.ukf.estimate(), grid: this.grid.estimate(), slam: this.slam.estimate(),
     };
   }
 

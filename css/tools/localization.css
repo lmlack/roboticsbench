@@ -56,6 +56,7 @@
 .loc-c-pf { --c: var(--plot-measured); }
 .loc-c-ekf { --c: var(--plot-control); }
 .loc-c-ukf { --c: var(--plot-i); }
+.loc-c-slam { --c: var(--plot-error); }
 .loc-c-grid { --c: var(--plot-p); }
 .loc-c-dr { --c: var(--fg-subtle); background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
 .loc-algo .loc-swatch { margin-right: 0; }

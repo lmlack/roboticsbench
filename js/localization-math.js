@@ -113,6 +113,20 @@ export function createMathPanel(root, sim) {
       "From the predicted pose to the landmark. Landmarks are folded in one at a time."),
   ].join("");
 
+  $("#loc-math-slam").innerHTML = [
+    step("\\mu = (x,\\ y,\\ \\theta,\\ m_{1,x},\\ m_{1,y},\\ \\dots,\\ m_{N,x},\\ m_{N,y})^\\top",
+      `The robot and every landmark mapped so far, in one Gaussian. ${inl("\\Sigma")} is ${inl("(3 + 2N) \\times (3 + 2N)")}: it also holds how each landmark's error is tied to the robot's and to the other landmarks'.`),
+    step("\\Sigma_{rr} \\leftarrow G \\Sigma_{rr} G^\\top + V M V^\\top,\\quad \\Sigma_{rm} \\leftarrow G\\, \\Sigma_{rm}",
+      "Predict moves only the robot. The landmarks stay put, but their link to the robot turns with it."),
+    step("m_j = \\begin{pmatrix} x + r\\cos(\\theta + b) \\\\ y + r\\sin(\\theta + b) \\end{pmatrix}",
+      "The first time a landmark is seen it goes in where the measurement puts it."),
+    step("\\Sigma_{jj} = G_r \\Sigma_{rr} G_r^\\top + G_z R\\, G_z^\\top,\\quad \\Sigma_{j\\cdot} = G_r \\Sigma_{r\\cdot}",
+      `It inherits the robot's uncertainty (${inl("G_r")}) plus the sensor's (${inl("G_z")}), and starts out correlated with everything the robot is.`),
+    step("H = \\begin{pmatrix} H_r & 0 \\cdots 0 & H_j & 0 \\cdots 0 \\end{pmatrix}",
+      "Seen again, it updates like the EKF, but H has entries for the robot and that one landmark. The gain K is full, so one sighting moves the whole map."),
+    step("\\mu \\leftarrow \\mu + K\\nu,\\quad \\Sigma \\leftarrow \\Sigma - K S K^\\top", `Gated at ${inl(`d^2 \\le ${GATE}`)}, like the EKF.`),
+  ].join("");
+
   $("#loc-math-ukf").className = "";
   $("#loc-math-ukf").innerHTML = [
     step("\\chi_0 = \\mu,\\quad \\chi_i = \\mu + \\Big(\\sqrt{(n+\\lambda)\\Sigma}\\Big)_i,\\quad \\chi_{i+n} = \\mu - \\Big(\\sqrt{(n+\\lambda)\\Sigma}\\Big)_i",
@@ -204,7 +218,7 @@ export function createMathPanel(root, sim) {
     live("#loc-math-grid-live", [
       `${gr.nx} \\times ${gr.ny} \\times ${gr.nt} = ${big(gr.N)}\\ \\text{cells},\\quad ${big(gr.free * gr.nt)}\\ \\text{free}`,
       `\\Delta = ${GRID.cell}${unit("m")},\\quad \\Delta\\theta = ${num(gr.dth / DEG, 1)}^\\circ,\\quad ${fmt(1 / (GRID.every * DT), 0)}${unit("Hz")}`,
-      `\\text{last shift} = (${num(gr.lastMove.x, 3)}${unit("m")},\\ ${num(gr.lastMove.y, 3)}${unit("m")},\\ ${num(gr.lastMove.th / DEG, 1)}^\\circ)`,
+      `\\text{last shift} = (${num(gr.lastMove.x, 3)}${unit("m")},\\ ${num(gr.lastMove.y, 3)}${unit("m")},\\ {${num(gr.lastMove.th / DEG, 1)}}^\\circ)`,
       `b_{xy} = ${num(gr.blur.xy, 3)},\\quad b_\\theta = ${num(gr.blur.th, 3)},\\quad \\sigma_{r,g} = ${num(srg, 3)}${unit("m")},\\quad \\sigma_{\\varphi,g} = ${num(sbg, 3)}${unit("rad")}`,
       `\\text{mode} = (${gr.mode.i},\\ ${gr.mode.j},\\ ${gr.mode.k}),\\quad \\textstyle\\sum_B bel = ${num(gr.modeMass, 3)}`,
     ]);
@@ -250,6 +264,28 @@ export function createMathPanel(root, sim) {
     if (ul && sim.landmarks[ul.j]) ukfLines.push(`\\nu = ${vec(ul.nu, 3)},\\quad d^2 = ${num(ul.d2)}`);
     ukfLines.push(`\\text{95\\% ellipse: } ${num(ue.rx, 3)}${unit("m")} \\times ${num(ue.ry, 3)}${unit("m")}`);
     live("#loc-math-ukf-live", ukfLines);
+
+    const slam = sim.slam;
+    const smap = slam.map();
+    const sP = slam.P;
+    const slamLines = [
+      `N = ${smap.length},\\quad \\dim \\mu = ${slam.mu.length},\\quad \\Sigma: ${slam.mu.length} \\times ${slam.mu.length}`,
+      `\\sigma_x = ${num(Math.sqrt(sP[0][0]), 3)}${unit("m")},\\quad \\sigma_y = ${num(Math.sqrt(sP[1][1]), 3)}${unit("m")},\\quad \\sigma_\\theta = ${num(Math.sqrt(sP[2][2]) / DEG, 1)}^\\circ`,
+    ];
+    if (smap.length) {
+      const widest = smap.reduce((a, b) => (b.rx > a.rx ? b : a));
+      slamLines.push(`\\text{least certain landmark: } ${num(widest.rx, 3)}${unit("m")} \\text{ (95\\%)}`);
+    }
+    live("#loc-math-slam-live", slamLines);
+    const sv = $("#loc-math-slam-verdict");
+    sv.className = "small verdict";
+    sv.textContent = !smap.length
+      ? "Nothing mapped yet: drive somewhere a landmark is in range."
+      : slam.added
+        ? `Just added a landmark to the map, which now has ${smap.length}.`
+        : slam.last && slam.last.accepted
+          ? "Updating the robot and the map from landmarks it has mapped before."
+          : "Only predicting: no mapped landmark in view, so the robot's uncertainty grows.";
     const ukv = $("#loc-math-ukf-verdict");
     if (ul && sim.landmarks[ul.j]) gateVerdict(ukv, ul, ukf.rejected, "UKF");
     else {
