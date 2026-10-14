@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ALGOS, MAP_FORMAT, MinHeap, PRESETS, blocked, compareAll, formatMap, gridSearch, makeGrid, makePreset,
-  parseMap, pathFree, pathLength, run, segmentFree, segmentFreeSampled, treeSearch,
+  parseMap, pathFree, pathLength, planner, prmSearch, run, segmentFree, segmentFreeSampled, treeSearch,
 } from "../js/planning-sim.js";
 
 const close = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol;
@@ -136,9 +136,7 @@ test("a walled-in or blocked goal returns no path cleanly", () => {
   const goal = { x: 40, y: 20 };
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) grid.cells[(goal.y + dy) * grid.w + goal.x + dx] = 1;
   for (const algo of Object.keys(ALGOS)) {
-    const gen = ALGOS[algo].kind === "grid"
-      ? gridSearch(grid, start, goal, { algo, conn: 8 })
-      : treeSearch(grid, start, goal, { star: algo === "rrtstar", budget: 400, seed: 3 });
+    const gen = planner(algo, grid, start, goal, { conn: 8, budget: 400, samples: 300, k: 10, seed: 3 });
     const s = run(gen);
     assert.equal(s.done, true, algo);
     assert.equal(s.found, false, algo);
@@ -194,12 +192,66 @@ test("RRT* cost never increases as iterations go on", () => {
   }
 });
 
+test("PRM: every link is free, and the path runs along links", () => {
+  for (const name of ["empty", "clutter", "rooms", "forest"]) {
+    const m = makePreset(name);
+    const s = run(prmSearch(m.grid, m.start, m.goal, { samples: 600, k: 10, seed: 2 }));
+    assert.ok(s.found, name);
+    for (let e = 0; e < s.edges.length; e += 2) {
+      const [i, j] = [s.edges[e], s.edges[e + 1]];
+      assert.ok(segmentFreeSampled(m.grid, s.xs[i], s.ys[i], s.xs[j], s.ys[j]), `${name}: link ${i}-${j}`);
+    }
+    assert.ok(pathFree(m.grid, s.path, FINE), name);
+    assert.ok(close(pathLength(s.path), s.cost, 1e-6), name);
+    assert.deepEqual(s.path[0], { x: m.start.x + 0.5, y: m.start.y + 0.5 });
+    assert.deepEqual(s.path.at(-1), { x: m.goal.x + 0.5, y: m.goal.y + 0.5 });
+  }
+});
+
+test("PRM's query is the shortest path through its own roadmap", () => {
+  const m = makePreset("clutter", 2);
+  const s = run(prmSearch(m.grid, m.start, m.goal, { samples: 400, k: 8, seed: 5 }));
+  assert.ok(s.found);
+  // Plain Dijkstra over the same links, as a check on the A* query.
+  const adj = Array.from({ length: s.n }, () => []);
+  for (let e = 0; e < s.edges.length; e += 2) {
+    const [i, j] = [s.edges[e], s.edges[e + 1]];
+    const d = Math.hypot(s.xs[i] - s.xs[j], s.ys[i] - s.ys[j]);
+    adj[i].push([j, d]);
+    adj[j].push([i, d]);
+  }
+  const dist = new Array(s.n).fill(Infinity);
+  const done = new Array(s.n).fill(false);
+  dist[0] = 0;
+  for (;;) {
+    let u = -1;
+    for (let i = 0; i < s.n; i++) if (!done[i] && (u < 0 || dist[i] < dist[u])) u = i;
+    if (u < 0 || dist[u] === Infinity) break;
+    done[u] = true;
+    for (const [v, d] of adj[u]) dist[v] = Math.min(dist[v], dist[u] + d);
+  }
+  assert.ok(close(dist[1], s.cost, 1e-9));
+});
+
+test("PRM goes through sample, connect, then query", () => {
+  const m = makePreset("empty");
+  const phases = [];
+  for (const s of prmSearch(m.grid, m.start, m.goal, { samples: 50, k: 6, seed: 1 })) {
+    if (phases.at(-1) !== s.phase) phases.push(s.phase);
+  }
+  assert.deepEqual(phases, ["sample", "connect", "query"]);
+});
+
 test("runs repeat exactly with the same seed", () => {
   const m = makePreset("clutter", 4);
   const a = run(treeSearch(m.grid, m.start, m.goal, { star: true, budget: 800, seed: 9 }));
   const b = run(treeSearch(m.grid, m.start, m.goal, { star: true, budget: 800, seed: 9 }));
   assert.equal(a.cost, b.cost);
   assert.equal(a.n, b.n);
+  const p = run(prmSearch(m.grid, m.start, m.goal, { samples: 300, seed: 9 }));
+  const q = run(prmSearch(m.grid, m.start, m.goal, { samples: 300, seed: 9 }));
+  assert.equal(p.cost, q.cost);
+  assert.equal(p.edgeCount, q.edgeCount);
 });
 
 test("every map connects start and goal, 4- and 8-connected, several seeds", async () => {
