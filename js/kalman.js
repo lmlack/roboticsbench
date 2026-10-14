@@ -781,6 +781,7 @@ export function start(root) {
       ${eq("x")}
       <p class="eq-note">Position and velocity.</p>
       ${eq("fh")}${eq("f-live", "eq live")}${eq("h-live", "eq live")}
+      <p class="eq-note">F and H are fixed matrices: the model is linear, so this is the plain Kalman filter (KF), and it's exact. For a robot that turns, see the EKF on the <a href="#localization">Localization tab</a>.</p>
       ${eq("q")}${eq("q-live", "eq live")}${eq("r-live", "eq live")}
       <p class="eq-note" id="kf-math-model-note"></p>
     </div>
