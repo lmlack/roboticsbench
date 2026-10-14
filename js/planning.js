@@ -223,6 +223,7 @@ export function start(root) {
     // The uploaded map is kept pristine, so picking its card reloads the file
     // as written rather than whatever has been drawn on top of it since.
     map = k === UPLOAD_KEY ? cloneMap(uploaded) : makePreset(k, seeds[k]);
+    keepAsPicked();
     for (const [key, { card }] of Object.entries(cards)) card.setAttribute("aria-pressed", String(key === k));
     drawThumb(k);
     mapChanged(true);
@@ -329,11 +330,27 @@ export function start(root) {
     type: "button", class: "btn", text: "Clear walls",
     onclick: () => {
       map.grid.cells.fill(0);
+      keepAsPicked();
       currentPreset = null;
       for (const { card } of Object.values(cards)) card.setAttribute("aria-pressed", "false");
       mapChanged(true);
     },
   }));
+
+  // The map as it was picked, so "Clear drawing" can take away what was drawn
+  // on it, and only that.
+  let asPicked = null;
+  const undraw = $("#plan-undraw");
+  function keepAsPicked() {
+    asPicked = cloneMap(map);
+    undraw.disabled = true;
+  }
+  undraw.addEventListener("click", () => {
+    map = cloneMap(asPicked);
+    undraw.disabled = true;
+    mapChanged(true);
+  });
+  keepAsPicked();
 
   function mapChanged(hard = false) {
     setStageAspect();
@@ -528,6 +545,7 @@ export function start(root) {
       if (p.x === m.x && p.y === m.y) return;
       m.x = p.x;
       m.y = p.y;
+      undraw.disabled = false;
       mapChanged();
       return;
     }
@@ -543,7 +561,10 @@ export function start(root) {
       }
     }
     lastCell = p;
-    if (changed) mapChanged();
+    if (changed) {
+      undraw.disabled = false;
+      mapChanged();
+    }
   }
 
   function lineCells(a, b) {
