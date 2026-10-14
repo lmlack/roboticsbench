@@ -6,11 +6,17 @@
 
 import { gridSearch, run } from "./planning-sim.js";
 
+import { PoseGraphSLAM } from "./posegraph.js";
+
 export const WORLD = { w: 10, h: 7 };
 export const DT = 0.05; // seconds per motion and sensor step
 export const HISTORY_SECONDS = 20;
 export const TRAIL_SECONDS = 8;
 export const GATE = 13.82; // chi-square, 2 dof, 99.9%: EKF rejects anything further out
+// Look-alike landmarks: SLAM starts a new landmark only when a sighting is
+// this far (d²) from every one it has mapped. Between GATE and this it is
+// too ambiguous to use and is dropped.
+export const NEW_LANDMARK = 40;
 export const ELLIPSE_K2 = 5.991; // chi-square, 2 dof, 95%
 export const RECOVERED = 0.3; // meters, what counts as "found the robot"
 
@@ -117,6 +123,17 @@ export function systematicResample(w, n, u0) {
   return idx;
 }
 
+/** Squared, noise-scaled range-bearing error of sighting m from a pose to landmark lm. */
+function sightCost(lm, x, y, th, m, sr, sb) {
+  const dx = lm.x - x, dy = lm.y - y;
+  const er = (m.r - Math.hypot(dx, dy)) / sr;
+  const eb = wrap(m.b - Math.atan2(dy, dx) + th) / sb;
+  return er * er + eb * eb;
+}
+
+/** νᵀ S⁻¹ ν for a 2-vector. */
+const maha2 = (nu, Si) => nu[0] * (Si[0][0] * nu[0] + Si[0][1] * nu[1]) + nu[1] * (Si[1][0] * nu[0] + Si[1][1] * nu[1]);
+
 export class ParticleFilter {
   constructor(n, rng, gauss) {
     this.rng = rng;
@@ -218,7 +235,7 @@ export class ParticleFilter {
    * Measurement update. z is a list of { j, r, b }: landmark index, range,
    * bearing. Weights are multiplied by p(z | x), done as a sum of logs.
    */
-  update(z, landmarks, sr, sb) {
+  update(z, landmarks, sr, sb, known = true) {
     this.resampled = false;
     this.injected = 0;
     if (!z.length) return;
@@ -226,11 +243,14 @@ export class ParticleFilter {
     for (let i = 0; i < n; i++) {
       let s = 0;
       for (const m of z) {
-        const lm = landmarks[m.j];
-        const dx = lm.x - x[i], dy = lm.y - y[i];
-        const er = (m.r - Math.hypot(dx, dy)) / sr;
-        const eb = wrap(m.b - Math.atan2(dy, dx) + th[i]) / sb;
-        s += er * er + eb * eb;
+        // When landmarks look alike, each particle scores a sighting against
+        // whichever landmark fits it best from where that particle stands.
+        if (known) s += sightCost(landmarks[m.j], x[i], y[i], th[i], m, sr, sb);
+        else {
+          let best = Infinity;
+          for (const lm of landmarks) best = Math.min(best, sightCost(lm, x[i], y[i], th[i], m, sr, sb));
+          s += best;
+        }
       }
       ll[i] = -0.5 * s;
     }
@@ -361,26 +381,40 @@ export class EKF {
     this.Pbar = this.P;
   }
 
-  /** Sequential update, one landmark at a time, with a Mahalanobis gate. */
-  update(z, landmarks, sr, sb) {
+  /** Innovation of sighting m against landmark lm, from the current estimate. */
+  innovation(m, lm, R) {
+    const [x, y, th] = this.mu;
+    const dx = lm.x - x, dy = lm.y - y;
+    const q = dx * dx + dy * dy;
+    if (q < 1e-6) return null;
+    const sq = Math.sqrt(q);
+    const zhat = [sq, wrap(Math.atan2(dy, dx) - th)];
+    const H = [[-dx / sq, -dy / sq, 0], [dy / q, -dx / q, -1]];
+    const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
+    const PHt = matMul(this.P, transpose(H));
+    const S = matAdd(matMul(H, PHt), R);
+    const Si = inv2(S);
+    return { zhat, H, nu, PHt, S, Si, d2: maha2(nu, Si) };
+  }
+
+  /**
+   * Sequential update, one landmark at a time, with a Mahalanobis gate. When
+   * landmarks look alike the sighting is matched to the landmark with the
+   * smallest d², which is right only while the estimate is close.
+   */
+  update(z, landmarks, sr, sb, known = true) {
     const R = [[sr * sr, 0], [0, sb * sb]];
     this.rejected = 0;
+    this.wrong = 0;
     for (const m of z) {
-      const lm = landmarks[m.j];
+      const pick = matchLandmark(m, landmarks, known, (lm) => this.innovation(m, lm, R));
+      if (!pick) continue;
+      const { j, inn } = pick;
       const [x, y, th] = this.mu;
-      const dx = lm.x - x, dy = lm.y - y;
-      const q = dx * dx + dy * dy;
-      if (q < 1e-6) continue;
-      const sq = Math.sqrt(q);
-      const zhat = [sq, wrap(Math.atan2(dy, dx) - th)];
-      const H = [[-dx / sq, -dy / sq, 0], [dy / q, -dx / q, -1]];
-      const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
-      const PHt = matMul(this.P, transpose(H));
-      const S = matAdd(matMul(H, PHt), R);
-      const Si = inv2(S);
-      const d2 = nu[0] * (Si[0][0] * nu[0] + Si[0][1] * nu[1]) + nu[1] * (Si[1][0] * nu[0] + Si[1][1] * nu[1]);
+      const { zhat, H, nu, PHt, S, Si, d2 } = inn;
       const accepted = d2 <= GATE;
-      this.last = { j: m.j, z: [m.r, m.b], zhat, nu, H, S, d2, accepted, K: null };
+      if (accepted && j !== m.j) this.wrong++;
+      this.last = { j, z: [m.r, m.b], zhat, nu, H, S, d2, accepted, K: null, next: pick.next, right: j === m.j };
       if (!accepted) {
         this.rejected++;
         continue;
@@ -403,6 +437,30 @@ export class EKF {
   ellipse() {
     return ellipseOf(this.P);
   }
+}
+
+/**
+ * Which landmark a sighting is. Known: the one it says. Look-alike: the one
+ * with the smallest Mahalanobis distance d², from the filter's own
+ * innovation function. Returns { j, inn, next } or null, next being the
+ * runner-up's d².
+ */
+function matchLandmark(m, landmarks, known, innovate) {
+  if (known) {
+    const inn = landmarks[m.j] ? innovate(landmarks[m.j]) : null;
+    return inn ? { j: m.j, inn } : null;
+  }
+  let best = null, next = Infinity;
+  landmarks.forEach((lm, j) => {
+    const inn = innovate(lm);
+    if (!inn) return;
+    if (!best || inn.d2 < best.inn.d2) {
+      if (best) next = best.inn.d2;
+      best = { j, inn };
+    } else next = Math.min(next, inn.d2);
+  });
+  if (best) best.next = next;
+  return best;
 }
 
 function symmetrize(P) {
@@ -528,41 +586,67 @@ export class EKFSLAM {
     this.added++;
   }
 
-  /** Measurements carry the landmark's index; no map is passed in. */
-  update(z, sr, sb) {
+  /** Innovation of sighting m against map slot k. */
+  innovation(m, k, R) {
+    const P = this.P, mu = this.mu, n = mu.length;
+    const li = 3 + 2 * k;
+    const dx = mu[li] - mu[0], dy = mu[li + 1] - mu[1];
+    const q = dx * dx + dy * dy;
+    if (q < 1e-6) return null;
+    const sq = Math.sqrt(q);
+    const zhat = [sq, wrap(Math.atan2(dy, dx) - mu[2])];
+    // H is zero except for the robot block and this landmark's two columns.
+    const cols = [0, 1, 2, li, li + 1];
+    const Hs = [
+      [-dx / sq, -dy / sq, 0, dx / sq, dy / sq],
+      [dy / q, -dx / q, -1, -dy / q, dx / q],
+    ];
+    const PHt = Array.from({ length: n }, (_, i) => [0, 1].map((r) => cols.reduce((acc, c, t) => acc + P[i][c] * Hs[r][t], 0)));
+    const S = [0, 1].map((r) => [0, 1].map((c2) => cols.reduce((acc, c, t) => acc + Hs[r][t] * PHt[c][c2], 0) + R[r][c2]));
+    const Si = inv2(S);
+    const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
+    return { PHt, S, Si, nu, d2: maha2(nu, Si) };
+  }
+
+  /**
+   * No map is passed in. Known: each sighting carries its landmark's index.
+   * Look-alike: it is matched to the mapped landmark with the smallest d²;
+   * past NEW_LANDMARK from all of them it starts a new one, and in between
+   * it is too ambiguous to use.
+   */
+  update(z, sr, sb, known = true) {
     const R = [[sr * sr, 0], [0, sb * sb]];
     this.rejected = 0;
     this.added = 0;
+    this.wrong = 0;
     for (const m of z) {
-      let k = this.slot(m.j);
-      if (k < 0) {
+      let k = -1, inn = null;
+      if (known) {
+        k = this.slot(m.j);
+        if (k >= 0) inn = this.innovation(m, k, R);
+      } else {
+        for (let c = 0; c < this.ids.length; c++) {
+          const cand = this.innovation(m, c, R);
+          if (cand && (!inn || cand.d2 < inn.d2)) {
+            inn = cand;
+            k = c;
+          }
+        }
+      }
+      if (k < 0 || (!known && inn && inn.d2 > NEW_LANDMARK)) {
         this.addLandmark(m.j, m.r, m.b, R);
         continue;
       }
+      if (!inn) continue;
       const P = this.P, mu = this.mu, n = mu.length;
-      const li = 3 + 2 * k;
-      const dx = mu[li] - mu[0], dy = mu[li + 1] - mu[1];
-      const q = dx * dx + dy * dy;
-      if (q < 1e-6) continue;
-      const sq = Math.sqrt(q);
-      const zhat = [sq, wrap(Math.atan2(dy, dx) - mu[2])];
-      // H is zero except for the robot block and this landmark's two columns.
-      const cols = [0, 1, 2, li, li + 1];
-      const Hs = [
-        [-dx / sq, -dy / sq, 0, dx / sq, dy / sq],
-        [dy / q, -dx / q, -1, -dy / q, dx / q],
-      ];
-      const PHt = Array.from({ length: n }, (_, i) => [0, 1].map((r) => cols.reduce((acc, c, t) => acc + P[i][c] * Hs[r][t], 0)));
-      const S = [0, 1].map((r) => [0, 1].map((c2) => cols.reduce((acc, c, t) => acc + Hs[r][t] * PHt[c][c2], 0) + R[r][c2]));
-      const Si = inv2(S);
-      const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
-      const d2 = nu[0] * (Si[0][0] * nu[0] + Si[0][1] * nu[1]) + nu[1] * (Si[1][0] * nu[0] + Si[1][1] * nu[1]);
+      const { PHt, S, Si, nu, d2 } = inn;
       const accepted = d2 <= GATE;
-      this.last = { j: m.j, nu, d2, accepted };
+      this.last = { j: this.ids[k], nu, d2, accepted };
       if (!accepted) {
         this.rejected++;
         continue;
       }
+      if (this.ids[k] !== m.j) this.wrong++;
       const K = PHt.map(([a, b]) => [a * Si[0][0] + b * Si[1][0], a * Si[0][1] + b * Si[1][1]]);
       for (let i = 0; i < n; i++) mu[i] += K[i][0] * nu[0] + K[i][1] * nu[1];
       mu[2] = wrap(mu[2]);
@@ -580,8 +664,8 @@ export class EKFSLAM {
 
   /** Drop world landmark j from the map, and shift the indices above it down. */
   forget(j) {
-    const k = this.slot(j);
-    if (k >= 0) {
+    // With look-alike landmarks one can be on the map more than once.
+    for (let k = this.slot(j); k >= 0; k = this.slot(j)) {
       const li = 3 + 2 * k;
       this.mu.splice(li, 2);
       this.P.splice(li, 2);
@@ -718,35 +802,19 @@ export class UKF {
     this.chi = chi;
   }
 
-  /** Sequential update per landmark, gated like the EKF. */
-  update(z, landmarks, sr, sb) {
+  /** Sequential update per landmark, gated and matched like the EKF. */
+  update(z, landmarks, sr, sb, known = true) {
     const R = [[sr * sr, 0], [0, sb * sb]];
     this.rejected = 0;
+    this.wrong = 0;
     for (const m of z) {
-      const lm = landmarks[m.j];
       const chi = this.sigmaPoints();
-      const Z = chi.map(([x, y, th]) => [Math.hypot(lm.x - x, lm.y - y), wrap(Math.atan2(lm.y - y, lm.x - x) - th)]);
-      if (Z.some((zz) => zz[0] < 1e-3)) continue;
-      let r = 0, c = 0, s = 0;
-      Z.forEach((zz, i) => {
-        r += this.wm[i] * zz[0];
-        c += this.wm[i] * Math.cos(zz[1]);
-        s += this.wm[i] * Math.sin(zz[1]);
-      });
-      const zhat = [r, Math.atan2(s, c)];
-      const S = [[R[0][0], 0], [0, R[1][1]]];
-      const Pxz = [[0, 0], [0, 0], [0, 0]];
-      Z.forEach((zz, i) => {
-        const dz = [zz[0] - zhat[0], wrap(zz[1] - zhat[1])];
-        const dx = [chi[i][0] - this.mu[0], chi[i][1] - this.mu[1], wrap(chi[i][2] - this.mu[2])];
-        for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) S[a][b] += this.wc[i] * dz[a] * dz[b];
-        for (let a = 0; a < 3; a++) for (let b = 0; b < 2; b++) Pxz[a][b] += this.wc[i] * dx[a] * dz[b];
-      });
-      const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
-      const Si = inv2(S);
-      const d2 = nu[0] * (Si[0][0] * nu[0] + Si[0][1] * nu[1]) + nu[1] * (Si[1][0] * nu[0] + Si[1][1] * nu[1]);
+      const pick = matchLandmark(m, landmarks, known, (lm) => this.innovation(m, lm, R, chi));
+      if (!pick) continue;
+      const { j, inn: { zhat, S, Pxz, nu, Si, d2 } } = pick;
       const accepted = d2 <= GATE;
-      this.last = { j: m.j, zhat, nu, S, d2, accepted, K: null };
+      if (accepted && j !== m.j) this.wrong++;
+      this.last = { j, zhat, nu, S, d2, accepted, K: null };
       if (!accepted) {
         this.rejected++;
         continue;
@@ -761,6 +829,30 @@ export class UKF {
       this.P = symmetrize(this.P.map((row, a) => row.map((x, b) => x - KSKt[a][b])));
       this.last.K = K;
     }
+  }
+
+  /** The unscented innovation of sighting m against landmark lm, through sigma points chi. */
+  innovation(m, lm, R, chi) {
+    const Z = chi.map(([x, y, th]) => [Math.hypot(lm.x - x, lm.y - y), wrap(Math.atan2(lm.y - y, lm.x - x) - th)]);
+    if (Z.some((zz) => zz[0] < 1e-3)) return null;
+    let r = 0, c = 0, s = 0;
+    Z.forEach((zz, i) => {
+      r += this.wm[i] * zz[0];
+      c += this.wm[i] * Math.cos(zz[1]);
+      s += this.wm[i] * Math.sin(zz[1]);
+    });
+    const zhat = [r, Math.atan2(s, c)];
+    const S = [[R[0][0], 0], [0, R[1][1]]];
+    const Pxz = [[0, 0], [0, 0], [0, 0]];
+    Z.forEach((zz, i) => {
+      const dz = [zz[0] - zhat[0], wrap(zz[1] - zhat[1])];
+      const dx = [chi[i][0] - this.mu[0], chi[i][1] - this.mu[1], wrap(chi[i][2] - this.mu[2])];
+      for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) S[a][b] += this.wc[i] * dz[a] * dz[b];
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 2; b++) Pxz[a][b] += this.wc[i] * dx[a] * dz[b];
+    });
+    const nu = [m.r - zhat[0], wrap(m.b - zhat[1])];
+    const Si = inv2(S);
+    return { zhat, S, Pxz, nu, Si, d2: maha2(nu, Si) };
   }
 
   estimate() {
@@ -780,6 +872,9 @@ export const GRID = {
   every: 4, // sensor steps per grid update: 5 Hz
   floor: 1e-3, // share of belief spread evenly after each update
 };
+// Look-alike landmarks: a sighting costs at most this much (5σ squared), so a
+// cell where it matches nothing is penalized but not ruled out.
+const LOOKALIKE_CAP = 25;
 
 /**
  * A Bayes filter over a 40 × 28 × 16 grid of poses. Odometry is summed over
@@ -984,7 +1079,7 @@ export class GridFilter {
    * far from the true pose, and without the widening the cell that holds the
    * robot can score worse than its neighbors.
    */
-  update(z, landmarks, sr, sb) {
+  update(z, landmarks, sr, sb, known = true) {
     if (!z.length) return;
     const { nx, ny, nt, ll, bel } = this;
     const plane = nx * ny;
@@ -997,6 +1092,15 @@ export class GridFilter {
         if (this.wall[c]) continue;
         const [cx, cy] = this.center(i, j);
         for (let k = 0; k < nt; k++) ll[k * plane + c] = 0;
+        if (!known) {
+          this.lookAlike(z, landmarks, c, cx, cy, srg2, sbg2);
+          for (let k = 0; k < nt; k++) {
+            const n = k * plane + c;
+            ll[n] *= -0.5;
+            if (ll[n] > max) max = ll[n];
+          }
+          continue;
+        }
         for (const m of z) {
           const lm = landmarks[m.j];
           const dx = lm.x - cx, dy = lm.y - cy;
@@ -1028,13 +1132,40 @@ export class GridFilter {
     this.updates++;
   }
 
+  /**
+   * Look-alike scoring for one cell: each sighting is scored against the
+   * landmark that fits it best for each heading. Its cost is capped at
+   * LOOKALIKE_CAP, so only landmarks at about the right range need checking.
+   */
+  lookAlike(z, landmarks, c, cx, cy, srg2, sbg2) {
+    const { nt, ll } = this;
+    const plane = this.nx * this.ny;
+    for (const m of z) {
+      const cand = [];
+      for (const lm of landmarks) {
+        const dx = lm.x - cx, dy = lm.y - cy;
+        const er = m.r - Math.hypot(dx, dy);
+        const base = (er * er) / srg2;
+        if (base < LOOKALIKE_CAP) cand.push(base, Math.atan2(dy, dx));
+      }
+      for (let k = 0; k < nt; k++) {
+        let best = LOOKALIKE_CAP;
+        for (let q = 0; q < cand.length; q += 2) {
+          const eb = wrap(m.b - cand[q + 1] + k * this.dth);
+          best = Math.min(best, cand[q] + (eb * eb) / sbg2);
+        }
+        ll[k * plane + c] += best;
+      }
+    }
+  }
+
   /** Called once per sensor step; runs the grid every GRID.every steps. */
-  step(v, w, dt, kNoise, z, landmarks, sr, sb) {
+  step(v, w, dt, kNoise, z, landmarks, sr, sb, known = true) {
     this.accumulate(v, w, dt, kNoise);
     this.pendingZ = z;
     if (this.acc.steps < GRID.every) return false;
     this.predict();
-    this.update(z, landmarks, sr, sb);
+    this.update(z, landmarks, sr, sb, known);
     this.finish();
     return true;
   }
@@ -1176,13 +1307,16 @@ export function planPath(grid, from, to) {
 
 // ---- The whole simulation ----
 
-export const ALGO_KEYS = ["dr", "pf", "ekf", "ukf", "grid", "slam"];
+export const ALGO_KEYS = ["dr", "pf", "ekf", "ukf", "grid", "slam", "graph"];
+// The estimators that pick one landmark per sighting, so a wrong pick can be counted.
+export const MATCHERS = ["ekf", "ukf", "slam", "graph"];
+const WRONG_SECONDS = 20;
 
 export class Localization {
   constructor({ seed = 1, particles = 1000, walls = DEFAULT_WALLS } = {}) {
     this.rng = mulberry32(seed);
     this.gauss = makeGauss(this.rng);
-    this.params = { odomNoise: 1, sensorNoise: 0.1, maxRange: 6, wind: 0, windDir: 0, gusty: false };
+    this.params = { odomNoise: 1, sensorNoise: 0.1, maxRange: 6, wind: 0, windDir: 0, gusty: false, lookAlike: false };
     this.landmarks = DEFAULT_LANDMARKS.map((l) => ({ ...l }));
     this.walls = walls.map((w) => ({ ...w }));
     this.autopilot = true;
@@ -1193,6 +1327,7 @@ export class Localization {
     this.ukf = new UKF();
     this.grid = new GridFilter();
     this.slam = new EKFSLAM();
+    this.graph = new PoseGraphSLAM();
     this.wallsChanged();
     this.reset();
   }
@@ -1212,6 +1347,8 @@ export class Localization {
     // SLAM starts with an empty map. Its known start pose is what ties the
     // map it builds to the world's coordinates.
     this.slam.init(START, 0.1, 0.1, 0.05);
+    this.graph.init(START, 0.1, 0.1, 0.05);
+    this.wrongs = Object.fromEntries(MATCHERS.map((k) => [k, []]));
     this.history = [];
     this.trail = [];
     this.breakTrail = true;
@@ -1244,6 +1381,7 @@ export class Localization {
     this.grid.initUniform();
     // SLAM keeps the map it built and forgets only where it is.
     this.slam.init(c, 2.5, 2, Math.PI / 2, true);
+    this.graph.init(c, 2.5, 2, Math.PI / 2, true);
   }
 
   /**
@@ -1312,6 +1450,7 @@ export class Localization {
   removeLandmark(j) {
     this.landmarks.splice(j, 1);
     this.slam.forget(j);
+    this.graph.forget(j);
     this.resense();
     this.z = [];
     for (const f of [this.ekf, this.ukf]) if (f.last && f.last.j >= this.landmarks.length) f.last = null;
@@ -1466,15 +1605,24 @@ export class Localization {
     this.ekf.predict(u.v, u.w, DT, k);
     this.ukf.predict(u.v, u.w, DT, k);
     this.slam.predict(u.v, u.w, DT, k);
+    this.graph.predict(u.v, u.w, DT, k);
 
     const { r: sr, b: sb } = this.sigma;
     const z = this.sense();
     this.z = z;
-    this.pf.update(z, this.landmarks, sr, sb);
-    this.ekf.update(z, this.landmarks, sr, sb);
-    this.ukf.update(z, this.landmarks, sr, sb);
-    this.slam.update(z, sr, sb);
-    this.grid.step(u.v, u.w, DT, k, z, this.landmarks, sr, sb);
+    // Look-alike: the sightings still carry the true index, but only for
+    // counting wrong matches. No estimator reads it.
+    const known = !this.params.lookAlike;
+    this.pf.update(z, this.landmarks, sr, sb, known);
+    this.ekf.update(z, this.landmarks, sr, sb, known);
+    this.ukf.update(z, this.landmarks, sr, sb, known);
+    this.slam.update(z, sr, sb, known);
+    const keyframe = this.graph.update(z, sr, sb, known);
+    this.grid.step(u.v, u.w, DT, k, z, this.landmarks, sr, sb, known);
+    for (const key of MATCHERS) {
+      if (key === "graph" && !keyframe) continue;
+      for (let i = 0; i < this[key].wrong; i++) this.wrongs[key].push(this.t);
+    }
 
     this.t += DT;
     this.record();
@@ -1512,6 +1660,7 @@ export class Localization {
     return {
       dr: this.dr.estimate(), pf: this.pf.estimate(), ekf: this.ekf.estimate(),
       ukf: this.ukf.estimate(), grid: this.grid.estimate(), slam: this.slam.estimate(),
+      graph: this.graph.estimate(),
     };
   }
 
@@ -1539,6 +1688,13 @@ export class Localization {
       this.acc -= DT;
       this.step();
     }
+  }
+
+  /** Wrong matches by one estimator in the last WRONG_SECONDS. */
+  wrongCount(key) {
+    const list = this.wrongs[key];
+    while (list.length && list[0] < this.t - WRONG_SECONDS) list.shift();
+    return list.length;
   }
 
   errors() {

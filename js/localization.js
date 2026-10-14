@@ -1,11 +1,11 @@
 // Localization UI: a top-down map with landmarks, walls, the true robot and
-// five estimators (particle cloud, EKF and UKF ellipses, grid heatmap, dead
-// reckoning), a zoom view around the robot, an error chart, and the math with
+// the estimators (particle cloud, EKF and UKF ellipses, grid heatmap, dead
+// reckoning, EKF-SLAM's map and graph SLAM's chain of poses), a zoom view around the robot, an error chart, and the math with
 // live numbers. The simulation lives in localization-sim.js, the math panel
 // in localization-math.js.
 
 import {
-  GRID, HISTORY_SECONDS, Localization, RECOVERED, WALL_T, WORLD, distToSegment,
+  GRID, HISTORY_SECONDS, Localization, MATCHERS, RECOVERED, WALL_T, WORLD, distToSegment,
 } from "./localization-sim.js";
 import { cssVar, dockWhenNarrow, evalNumber, fmt, segmented } from "./util.js";
 import { createMathPanel } from "./localization-math.js";
@@ -27,9 +27,11 @@ const ALGOS = [
   { key: "ukf", name: "UKF", color: "--plot-i" },
   { key: "ekf", name: "EKF", color: "--plot-control" },
   { key: "slam", name: "EKF-SLAM", color: "--plot-error" },
+  { key: "graph", name: "Graph SLAM", color: "--plot-d" },
 ];
 // The table lists them in the order of the toggles.
-const TABLE_ORDER = ["pf", "ekf", "ukf", "slam", "grid", "dr"];
+const TABLE_ORDER = ["pf", "ekf", "ukf", "slam", "graph", "grid", "dr"];
+const CLOSURE_SHOW = 2.5; // s a loop closure stays highlighted on the map
 const NAME = Object.fromEntries(ALGOS.map((a) => [a.key, a.name]));
 const HINTS = {
   landmark: "Click to add or remove a landmark",
@@ -139,6 +141,19 @@ export function start(root) {
   }
   sensorNote();
   windNote();
+
+  // ---- Look-alike landmarks ----
+  function alikeNote() {
+    $("#loc-alike-note").textContent = sim.params.lookAlike
+      ? "No sighting says which landmark it is. The EKF, UKF and both SLAMs match each one to the landmark that fits best, which works while they know roughly where they are. Reset the filters and watch them lock onto the wrong ones. The particle and grid filters score every guess against its own best fit, so they still find the robot."
+      : "Each sighting says which landmark it came from. Turn this on and they all look the same, so every estimator has to work out which one it's seeing.";
+  }
+  $("#loc-alike").addEventListener("change", (e) => {
+    sim.params.lookAlike = e.target.checked;
+    alikeNote();
+    updateReadouts();
+  });
+  alikeNote();
 
   // ---- Buttons ----
   let event = null; // the last kidnap or reset, for the status line
@@ -474,8 +489,13 @@ export function start(root) {
     if (on("ukf")) drawGaussian(ctx, g, sim.ukf, colors.ukf);
     if (on("ekf")) drawGaussian(ctx, g, sim.ekf, colors.ekf);
     if (on("slam")) {
-      drawSlamMap(ctx, g);
+      drawSlamMap(ctx, g, sim.slam.map(), colors.slam);
       drawGaussian(ctx, g, sim.slam, colors.slam);
+    }
+    if (on("graph")) {
+      drawGraph(ctx, g);
+      drawSlamMap(ctx, g, sim.graph.map(), colors.graph);
+      drawGaussian(ctx, g, sim.graph, colors.graph);
     }
 
     // Walls, with round caps: the collision and sight tests treat each wall
@@ -672,7 +692,7 @@ export function start(root) {
     for (const p of trail) {
       for (const a of algos) need = Math.max(need, Math.hypot(p[a.key][0] - p.x, p[a.key][1] - p.y));
     }
-    for (const key of ["ekf", "ukf", "slam"]) {
+    for (const key of ["ekf", "ukf", "slam", "graph"]) {
       if (!on(key)) continue;
       const e = sim[key].ellipse();
       const [mx, my] = sim[key].mu;
@@ -729,7 +749,7 @@ export function start(root) {
     }
 
     // EKF, UKF and SLAM 95% ellipses, true to scale here.
-    for (const key of ["ukf", "ekf", "slam"]) {
+    for (const key of ["ukf", "ekf", "slam", "graph"]) {
       if (!on(key)) continue;
       const e = sim[key].ellipse();
       const [mx, my] = sim[key].mu;
@@ -816,16 +836,67 @@ export function start(root) {
   }
 
   /**
-   * The map SLAM has built: a cross at each landmark estimate inside its 95%
+   * Graph SLAM's chain: a dot at every pose, joined in order. Right after a
+   * loop closure the chain as it was just before is drawn dashed and fades
+   * out, so the snap back into shape is visible, and the closing sightings
+   * are drawn bold.
+   */
+  function drawGraph(ctx, g) {
+    const gr = sim.graph;
+    const chain = (poses) => {
+      ctx.beginPath();
+      poses.forEach((p, i) => (i ? ctx.lineTo(g.X(p.x), g.Y(p.y)) : ctx.moveTo(g.X(p.x), g.Y(p.y))));
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.strokeStyle = colors.graph;
+    ctx.fillStyle = colors.graph;
+    const since = gr.before ? gr.t - gr.before.t : Infinity;
+    if (since < CLOSURE_SHOW) {
+      ctx.globalAlpha = 0.6 * (1 - since / CLOSURE_SHOW);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 4]);
+      chain(gr.before.poses);
+      ctx.setLineDash([]);
+    }
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1.5;
+    chain(gr.poses);
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    const r = Math.max(1.5, Math.min(2.5, g.s * 0.025));
+    for (const p of gr.poses) {
+      ctx.moveTo(g.X(p.x) + r, g.Y(p.y));
+      ctx.arc(g.X(p.x), g.Y(p.y), r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    // Loop closures: the sighting that tied a new pose to a landmark it had
+    // not seen in a while.
+    ctx.lineWidth = 2.5;
+    for (const c of gr.closures) {
+      const age = gr.t - c.t;
+      const p = gr.poses[c.i], l = gr.landmarks[c.l];
+      if (age > CLOSURE_SHOW || !p || !l) continue;
+      ctx.globalAlpha = 0.9 * (1 - age / CLOSURE_SHOW);
+      ctx.beginPath();
+      ctx.moveTo(g.X(p.x), g.Y(p.y));
+      ctx.lineTo(g.X(l.x), g.Y(l.y));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * A map SLAM has built: a cross at each landmark estimate inside its 95%
    * ellipse, joined to the true landmark by a faint line when they differ.
    */
-  function drawSlamMap(ctx, g) {
+  function drawSlamMap(ctx, g, list, color) {
     ctx.save();
-    for (const m of sim.slam.map()) {
+    for (const m of list) {
       const px = g.X(m.x), py = g.Y(m.y);
       const t = sim.landmarks[m.j];
       if (t) {
-        ctx.strokeStyle = colors.slam;
+        ctx.strokeStyle = color;
         ctx.globalAlpha = 0.35;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -834,12 +905,12 @@ export function start(root) {
         ctx.stroke();
       }
       ctx.globalAlpha = 0.14;
-      ctx.fillStyle = colors.slam;
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.ellipse(px, py, Math.max(3, m.rx * g.s), Math.max(3, m.ry * g.s), -m.angle, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 0.8;
-      ctx.strokeStyle = colors.slam;
+      ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -1022,11 +1093,20 @@ export function start(root) {
 
   function updateReadouts() {
     const e = sim.errors();
+    const alike = sim.params.lookAlike;
+    // With look-alike landmarks, how many sightings each one pinned on the
+    // wrong landmark in the last 20 s. The particle and grid filters never
+    // pick one, and dead reckoning never looks.
+    const wrongNote = (k) => {
+      if (!alike || !MATCHERS.includes(k)) return "";
+      const n = sim.wrongCount(k);
+      return `<span class="loc-wrong${n ? " bad" : ""}">${n} wrong match${n === 1 ? "" : "es"}</span>`;
+    };
     $("#loc-table").innerHTML = TABLE_ORDER.filter(on).map((k) => {
       const [word, cls] = statusWord(k, e[k]);
       return `<tr><th class="row" scope="row"><span class="loc-swatch loc-c-${k}"></span>${NAME[k]}</th>` +
         `<td>${fmt(e[k].pos, 3)} m</td><td>${fmt(e[k].head / DEG, 1)}°</td>` +
-        `<td class="loc-word ${cls}">${word}</td></tr>`;
+        `<td class="loc-word ${cls}">${word}${wrongNote(k)}</td></tr>`;
     }).join("") || `<tr><td class="loc-word" colspan="4">Turn on an algorithm above.</td></tr>`;
 
     const pf = sim.pf;
@@ -1043,6 +1123,13 @@ export function start(root) {
     set("#loc-m-map", `${map.length} / ${sim.landmarks.length}`);
     set("#loc-m-map-sub", errs.length
       ? `landmarks mapped, avg <span class="mono">${fmt(errs.reduce((a, b) => a + b, 0) / errs.length * 100, 0)} cm</span> off`
+      : "nothing mapped yet");
+
+    const gr = sim.graph;
+    const gErrs = gr.map().filter((m) => sim.landmarks[m.j]).map((m) => Math.hypot(m.x - sim.landmarks[m.j].x, m.y - sim.landmarks[m.j].y));
+    set("#loc-m-graph", `${gr.poses.length} poses`);
+    set("#loc-m-graph-sub", gErrs.length
+      ? `${gr.landmarks.length} landmarks, avg <span class="mono">${fmt(gErrs.reduce((a, b) => a + b, 0) / gErrs.length * 100, 0)} cm</span> off. Solved in <span class="mono">${fmt(gr.solveMs, 1)} ms</span>`
       : "nothing mapped yet");
 
     const badge = $("#loc-badge");
@@ -1069,6 +1156,7 @@ export function start(root) {
       ekf: `${off("ekf")}. It keeps one Gaussian near the old spot, and its gate rejects the new measurements as outliers, so it will not recover on its own.`,
       ukf: `${off("ukf")}. Like the EKF it keeps one Gaussian and gates out the new measurements.`,
       slam: `${off("slam")}. It believes it is still at the old spot, so landmarks it sees from here either get gated out or, if new, get placed on its map in the wrong spot.`,
+      graph: `${off("graph")}. Its newest pose is still at the old spot, so sightings from here fail the gate, and new landmarks go on its map in the wrong place.`,
       dr: `${off("dr")}. It never uses the landmarks, so it cannot notice.`,
     };
     const reset = {
@@ -1077,6 +1165,7 @@ export function start(root) {
       ekf: `started from a broad guess at the map center, now ${off("ekf")}. When the guess is far from the truth, the linearization can settle on a wrong pose.`,
       ukf: `started from the same broad guess, now ${off("ukf")}. Its sigma points span the whole guess, so it usually copes with a far-off start better than the EKF.`,
       slam: `kept the map it built and forgot only where it is, now ${off("slam")}. It re-finds itself against its own landmarks, the same way the EKF uses the given map.`,
+      graph: `kept its landmarks, pinned where they were, and started a new chain from the broad guess, now ${off("graph")}.`,
       dr: `restarted from the map center guess, ${off("dr")}. It never uses the landmarks, so it stays wrong.`,
     };
     const lines = event.kind === "kidnap" ? kidnap : reset;
