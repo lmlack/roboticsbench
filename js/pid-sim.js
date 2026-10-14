@@ -13,7 +13,7 @@ export const SYSTEMS = {
     name: "Drone altitude",
     short: "Drone",
     blurb: "Thrust lifts a 1 kg drone against gravity. Motors can push up but not pull down, and hovering needs steady thrust, so without Ki it sags below the target.",
-    blurbOpt: "Thrust lifts a 1 kg drone against gravity. Motors can push up but not pull down. The planner knows hovering takes 9.81 N, so it holds the target without an integral term.",
+    blurbOpt: "Thrust lifts a 1 kg drone against gravity. Motors can push up but not pull down. The model says hovering takes 9.81 N, so it holds the target without an integral term.",
     unit: "m",
     display: (v) => v,
     fromDisplay: (v) => v,
@@ -222,7 +222,7 @@ export class Simulation {
     this.pid = new PID(gains);
     this.noise = false;
     this.mode = "pid";
-    this.opt = null; // an MPC or ILQRController from optctl.js when mode is not "pid"
+    this.opt = null; // an LQR, MPC or iLQR controller from optctl.js when mode is not "pid"
     this.load(key);
   }
 
@@ -233,8 +233,9 @@ export class Simulation {
     this.reset();
   }
 
+  /** MPC and iLQR get a free pivot and swing up; PID and LQR start near the goal. */
   get free() {
-    return this.mode !== "pid";
+    return this.mode === "mpc" || this.mode === "ilqr";
   }
 
   load(key) {

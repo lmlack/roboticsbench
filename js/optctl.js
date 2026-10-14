@@ -222,9 +222,14 @@ export function lqrGain(key, sp, dt) {
       for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) s += A[r][i] * P[r][c] * A[c][j];
       return s + (i === j ? m.Q[i] : 0) - BPA[i] * BPA[j] / den;
     }));
+    // Rounding makes P drift off symmetric, and on an unstable plant (the
+    // pendulum) that error grows until it swamps the answer. Average it back,
+    // and stop once P stops changing relative to its size.
+    for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) next[i][j] = next[j][i] = 0.5 * (next[i][j] + next[j][i]);
+    const scale = Math.max(...next.flat().map(Math.abs));
     const diff = Math.max(...next.flat().map((v, i) => Math.abs(v - P.flat()[i])));
     P = next;
-    if (diff < 1e-9) break;
+    if (diff < 1e-10 * scale) break;
   }
   return K;
 }
@@ -344,5 +349,51 @@ export class ILQRController {
     if (!this.plan) return [];
     const j = Math.min(this.plan.X.length - 1, Math.floor(this.t / this.dt));
     return this.plan.X.slice(j);
+  }
+}
+
+/**
+ * LQR as a controller: one fixed gain, worked out once around the goal, and
+ * u = u* + K e from then on (K comes out negative). No plan and no horizon.
+ * It's the steady version of what MPC and iLQR hand back at the end of a
+ * plan, so it only knows the system near the goal.
+ */
+export class LQRController {
+  constructor(key, { dt = 0.02 } = {}) {
+    this.key = key;
+    this.dt = dt;
+    this.reset();
+  }
+
+  vec(state) {
+    return toVec(this.key, state);
+  }
+
+  reset() {
+    this.sp = null;
+    this.K = null;
+  }
+
+  /** A new target means a new linearization, so a new gain. */
+  gainFor(sp) {
+    if (sp !== this.sp) {
+      this.sp = sp;
+      this.K = lqrGain(this.key, sp, this.dt);
+    }
+    return this.K;
+  }
+
+  update(x, sp) {
+    const K = this.gainFor(sp);
+    const { x: xg, u: ug } = MODELS[this.key].goal(sp);
+    const e = stateError(this.key, x, xg);
+    this.e = e;
+    const raw = ug + K.reduce((s, k, i) => s + k * e[i], 0);
+    const [lo, hi] = SYSTEMS[this.key].uLimit;
+    return { u: Math.min(hi, Math.max(lo, raw)), raw };
+  }
+
+  forecast() {
+    return [];
   }
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SYSTEMS, Simulation } from "../js/pid-sim.js";
-import { ILQRController, MODELS, MPC, ilqr, lqrGain, step, stateError, toVec } from "../js/optctl.js";
+import { ILQRController, LQRController, MODELS, MPC, ilqr, lqrGain, step, stateError, toVec } from "../js/optctl.js";
 
 const DEG = Math.PI / 180;
 const wrapErr = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -88,4 +88,29 @@ test("PID mode is unchanged: the pole still lies on the floor when it falls", ()
   const sim = new Simulation("cartpole", { kp: 0, ki: 0, kd: 0 });
   for (let i = 0; i < 600; i++) sim.step();
   assert.ok(Math.abs(sim.state.th) <= 95 * DEG + 1e-9);
+});
+
+test("LQR's gain doesn't depend on the time step much, and the cart gain isn't lost", () => {
+  // The plain Riccati loop used to blow up on the pendulum after converging,
+  // which zeroed the cart-position gain.
+  const a = lqrGain("cartpole", 0, 0.01), b = lqrGain("cartpole", 0, 0.03);
+  assert.ok(a[0] > 5 && b[0] > 5, `cart gains ${a[0]}, ${b[0]}`);
+  for (let i = 0; i < 4; i++) assert.ok(Math.abs(a[i] - b[i]) / Math.abs(a[i]) < 0.25, `entry ${i}`);
+});
+
+test("LQR holds every system at its target and rides out a kick", () => {
+  const targets = { drone: 7, arm: 75, cartpole: 0 };
+  for (const key of Object.keys(targets)) {
+    const sys = SYSTEMS[key];
+    const sim = new Simulation(key, sys.presets.tuned);
+    sim.setMode("lqr", new LQRController(key));
+    assert.equal(sim.free, false, "LQR starts near the goal, not swung down");
+    sim.setSetpoint(sys.fromDisplay(targets[key]));
+    for (let i = 0; i < 8 * 200; i++) sim.step();
+    assert.ok(Math.abs(sys.measure(sim.state) - sim.sp) < sys.band, `${key} settles`);
+    sim.kick();
+    for (let i = 0; i < 6 * 200; i++) sim.step();
+    assert.ok(Math.abs(sys.measure(sim.state) - sim.sp) < sys.band, `${key} recovers`);
+    if (key === "cartpole") assert.ok(Math.abs(sim.state.x) < 0.2, "the cart comes back to the middle");
+  }
 });
