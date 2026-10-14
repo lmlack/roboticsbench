@@ -85,8 +85,10 @@ export function start(root) {
     return el("label", { class: "check" }, input, label);
   }
   const button = (text, onclick, cls = "btn") => el("button", { type: "button", class: cls, text, onclick });
-  function seg(label, options, value, onChange) {
-    const group = el("div", { class: "segmented", role: "group", "aria-label": label },
+  function seg(label, options, value, onChange, { grid = false } = {}) {
+    // grid: on a phone, lay the buttons out in even columns instead of a pill
+    // that would wrap (see .seg-grid in style.css).
+    const group = el("div", { class: grid ? "segmented seg-grid" : "segmented", role: "group", "aria-label": label },
       ...options.map(([v, text]) => el("button", { type: "button", "data-v": v, "aria-pressed": String(v === value), text })));
     segmented(group, onChange);
     return group;
@@ -125,7 +127,7 @@ export function start(root) {
     };
   }
 
-  function begin2d(box, gridStep = 0.5) {
+  function begin2d(box, gridStep = 0.5, showLabel = true) {
     if (!size2?.w) return null;
     const ctx = canvas.getContext("2d");
     ctx.setTransform(size2.dpr, 0, 0, size2.dpr, 0, 0);
@@ -143,7 +145,7 @@ export function start(root) {
     ctx.font = "13px Hyper, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`grid: ${gridStep} m`, 10, size2.h - 8);
+    if (showLabel) ctx.fillText(`grid: ${gridStep} m`, 10, size2.h - 8);
     return { ctx, v, c };
   }
 
@@ -660,6 +662,7 @@ export function start(root) {
       short: "iLQR and MPC",
       dim: "2d",
       box: { x0: -1.6, x1: 4.0, y0: -1.25, y1: 2.95 },
+      gridLabel: false,
       hint: "",
       body: () => `
         <p>Some jobs need a plan, not just a reaction. This arm's motor is too weak to lift it straight up: holding it out level takes ${inl(`mgL = ${MGL}`)} N·m, and the motor gives a few. A controller that only pushes against the error it sees right now would push toward the top forever and get nowhere.</p>
@@ -671,7 +674,7 @@ export function start(root) {
             slider({ label: "Motor strength", min: 3, max: 8, step: 0.5, value: s7.sim.limit, unit: " N·m", digits: 1, onInput: (v) => { s7.sim.limit = v; restart7(); } }),
           ),
           el("div", { class: "learn-row" },
-            seg("How to run it", [["follow", "Follow the plan"], ["mpc", "Re-plan as it goes (MPC)"]], s7.sim.mode, (v) => { s7.sim.mode = v; restart7(); })),
+            seg("How to run it", [["follow", "Follow the plan"], ["mpc", "Re-plan (MPC)"]], s7.sim.mode, (v) => { s7.sim.mode = v; restart7(); }, { grid: true })),
           el("div", { class: "learn-row" },
             button("Kick", () => { s7.sim.kick(s7.sim.x[1] >= 0 ? 2.2 : -2.2); if (s7.sim.mode === "mpc") markChart7(); }, "btn solid"),
             button("Start over", () => restart7())),
@@ -700,7 +703,7 @@ export function start(root) {
         ctx.stroke();
         ctx.restore();
         dashed(g, pivot, [pivot[0], pivot[1] + 1], c.teal);
-        label(g, pivot[0] + 0.05, pivot[1] + 1.05, "goal: straight up", c.teal);
+        label(g, pivot[0] + 0.02, pivot[1] + 1.02, "goal", c.teal);
         ctx.lineCap = "round";
         ctx.strokeStyle = c.muted;
         ctx.lineWidth = Math.max(6, v.s * 0.07);
@@ -720,7 +723,12 @@ export function start(root) {
           ctx.arc(v.X(pivot[0]), v.Y(pivot[1]), r, a0, a0 - frac * Math.PI * 0.9, frac > 0);
           ctx.stroke();
         }
-        label(g, -1.5, 2.75, `motor ${num(sim.u, 1).replace("-", "−")} of ±${sim.limit} N·m`, c.muted);
+        // Motor readout in the bottom-left corner, clear of the chart.
+        ctx.fillStyle = c.muted;
+        ctx.font = "13px Hyper, system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(`motor ${sim.u < 0 ? "−" : ""}${Math.abs(sim.u).toFixed(1)} of ±${sim.limit} N·m`, 10, size2.h - 8);
 
         // Chart of θ against time: every iLQR pass, the arm's actual path, and MPC's forecast.
         const box = { x0: 1.35, x1: 3.85, y0: -1.0, y1: 2.6 };
@@ -740,8 +748,8 @@ export function start(root) {
           ctx.fillText(txt, v.X(box.x0) - 5, v.Y(cy(a)));
         }
         ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.fillText("angle over time", v.X(box.x0), v.Y(box.y0) + 4);
+        ctx.textBaseline = "bottom";
+        ctx.fillText("angle over time", v.X(box.x0), v.Y(box.y1) - 4);
         const curve = (pts, color, width, alpha = 1, dash = null) => {
           if (pts.length < 2) return;
           ctx.save();
@@ -1112,7 +1120,7 @@ export function start(root) {
     const l = lesson();
     let result;
     if (l.dim === "2d") {
-      const g = begin2d(l.box, l.grid ?? 0.5);
+      const g = begin2d(l.box, l.grid ?? 0.5, l.gridLabel !== false);
       if (!g) return;
       result = l.draw(g);
     } else {
