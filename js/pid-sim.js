@@ -13,6 +13,7 @@ export const SYSTEMS = {
     name: "Drone altitude",
     short: "Drone",
     blurb: "Thrust lifts a 1 kg drone against gravity. Motors can push up but not pull down, and hovering needs steady thrust, so without Ki it sags below the target.",
+    blurbOpt: "Thrust lifts a 1 kg drone against gravity. Motors can push up but not pull down. The planner knows hovering takes 9.81 N, so it holds the target without an integral term.",
     unit: "m",
     display: (v) => v,
     fromDisplay: (v) => v,
@@ -34,6 +35,7 @@ export const SYSTEMS = {
       return { y, v: 0 };
     },
     measure: (s) => s.y,
+    measureKey: "y",
     deriv(s, u) {
       const m = 1;
       return { y: s.v, v: u / m - g - 0.15 * s.v };
@@ -78,6 +80,7 @@ export const SYSTEMS = {
       return { th, w: 0 };
     },
     measure: (s) => s.th,
+    measureKey: "th",
     // Torque gravity applies about the pivot, same sign convention as the
     // motor (positive turns toward larger angles). Shared with the drawing.
     gravityTorque: (s) => -1 * g * 1 * Math.sin(s.th),
@@ -95,11 +98,15 @@ export const SYSTEMS = {
     name: "Inverted pendulum",
     short: "Pendulum",
     blurb: "Push a cart left and right to keep a pole balanced upright. The target is fixed at 0°. Kp has to beat gravity (about 12 N per radian here) before anything else works.",
+    blurbOpt: "Push a cart left and right to get a pole upright and keep it there. The target is fixed at 0°, straight up.",
     unit: "°",
     display: (v) => v / DEG,
     fromDisplay: (v) => v * DEG,
     setpoint: { min: 0, max: 0, default: 0, step: 1 },
     start: 6 * DEG,
+    // MPC and iLQR get a free pivot and start hanging straight down, so they
+    // have to swing the pole up before they can balance it.
+    startFree: Math.PI,
     uLimit: [-40, 40],
     uUnit: "N",
     noise: 0.3 * DEG,
@@ -119,6 +126,7 @@ export const SYSTEMS = {
       return { x: 0, v: 0, th, w: 0 };
     },
     measure: (s) => s.th,
+    measureKey: "th",
     deriv(s, u) {
       // Point mass on a massless rod, frictionless cart.
       const M = 1, m = 0.2, l = 1;
@@ -128,8 +136,10 @@ export const SYSTEMS = {
       const acc = temp - (m * l * alpha * cos) / (M + m);
       return { x: s.v, v: acc - 0.1 * s.v, th: s.w, w: alpha - 0.02 * s.w };
     },
-    constrain(s) {
-      // The pole lies on the floor once it falls past horizontal.
+    constrain(s, free = false) {
+      // The pole lies on the floor once it falls past horizontal, unless the
+      // pivot is free (MPC and iLQR), when it swings all the way round.
+      if (free) return;
       const lim = 95 * DEG;
       if (Math.abs(s.th) > lim) {
         s.th = Math.sign(s.th) * lim;
@@ -211,7 +221,20 @@ export class Simulation {
   constructor(key, gains) {
     this.pid = new PID(gains);
     this.noise = false;
+    this.mode = "pid";
+    this.opt = null; // an MPC or ILQRController from optctl.js when mode is not "pid"
     this.load(key);
+  }
+
+  /** Switch between PID and an optimizing controller built for this system. */
+  setMode(mode, controller = null) {
+    this.mode = mode;
+    this.opt = controller;
+    this.reset();
+  }
+
+  get free() {
+    return this.mode !== "pid";
   }
 
   load(key) {
@@ -223,8 +246,9 @@ export class Simulation {
   reset() {
     this.t = 0;
     this.sp = this.sys.fromDisplay(this.sys.setpoint.default);
-    this.state = this.sys.init(this.sys.start);
+    this.state = this.sys.init(this.free && this.sys.startFree !== undefined ? this.sys.startFree : this.sys.start);
     this.pid.reset();
+    this.opt?.reset();
     this.history = [];
     this.last = { u: 0, e: 0, p: 0, i: 0, d: 0, saturated: false };
     this.markEvent();
@@ -238,6 +262,7 @@ export class Simulation {
 
   kick() {
     this.sys.kick(this.state);
+    this.opt?.disturbed?.();
     this.markEvent();
   }
 
@@ -250,9 +275,16 @@ export class Simulation {
   /** Advance by one controller period. */
   step() {
     const sys = this.sys;
-    let meas = sys.measure(this.state);
-    if (this.noise) meas += gauss() * sys.noise;
-    this.last = this.pid.update(this.sp, meas, CONTROL_DT, sys.uLimit, sys.sign ?? 1);
+    const noise = this.noise ? gauss() * sys.noise : 0;
+    if (this.mode === "pid") {
+      const meas = sys.measure(this.state) + noise;
+      this.last = this.pid.update(this.sp, meas, CONTROL_DT, sys.uLimit, sys.sign ?? 1);
+    } else {
+      // The optimizers use the whole state; noise lands on the measured part.
+      const seen = { ...this.state, [sys.measureKey]: this.state[sys.measureKey] + noise };
+      const { u, raw } = this.opt.update(this.opt.vec(seen), this.sp, CONTROL_DT);
+      this.last = { u, raw, e: this.sp - sys.measure(this.state), p: 0, i: 0, d: 0, saturated: u !== raw };
+    }
 
     const h = CONTROL_DT / SUBSTEPS;
     for (let k = 0; k < SUBSTEPS; k++) {
@@ -266,13 +298,16 @@ export class Simulation {
       for (const key of Object.keys(d2)) {
         if (key !== "v" && key !== "w") this.state[key] += d2[key] * h;
       }
-      sys.constrain(this.state);
+      sys.constrain(this.state, this.free);
     }
     this.t += CONTROL_DT;
 
     const y = sys.measure(this.state);
-    this.trackMetrics(y);
-    this.history.push({ t: this.t, sp: this.sp, y, e: this.sp - y, u: this.last.u, sat: this.last.saturated });
+    // Angles on a free pivot are shown wrapped, so a pole that has swung up
+    // through 180° reads as near 0°, not 360°.
+    const yShown = this.free && sys.measureKey === "th" ? this.sp + Math.atan2(Math.sin(y - this.sp), Math.cos(y - this.sp)) : y;
+    this.trackMetrics(yShown);
+    this.history.push({ t: this.t, sp: this.sp, y: yShown, e: this.sp - yShown, u: this.last.u, sat: this.last.saturated });
     const cutoff = this.t - HISTORY_SECONDS;
     let drop = 0;
     while (drop < this.history.length && this.history[drop].t < cutoff) drop++;
