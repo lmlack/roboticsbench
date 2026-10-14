@@ -461,6 +461,9 @@ table.jac tr:last-child td { border-bottom: 0; }
 /* ---------- PID ---------- */
 
 .pid-top { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 16px; text-align: center; }
+.pid-pickers { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; }
+.pid-picker { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pid-picker .eyebrow { margin: 0; }
 .pid-top p { margin: 0; max-width: 680px; color: var(--fg-muted); font-size: var(--text-sm); }
 .pid-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .pid-stage { display: grid; gap: 16px; min-width: 0; }

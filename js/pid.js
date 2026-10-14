@@ -1,9 +1,12 @@
-// PID tuning simulator UI: animated plant on a canvas, gain sliders, and a
-// live chart of response, error and controller output.
+// Control page: the same three plants driven by PID, MPC or iLQR. Animated
+// plant on a canvas, the controller's settings, and a live chart of response,
+// error and controller output.
 
 import { SYSTEMS, Simulation } from "./pid-sim.js";
+import { ILQRController, MPC, fromVec } from "./optctl.js";
 import { cssVar, el, evalNumber, fmt, segmented } from "./util.js";
 import { createMathPanel } from "./pid-math.js";
+import { createOptMath } from "./optctl-math.js";
 
 const DEG = Math.PI / 180;
 const WINDOW = 10; // seconds shown on the charts
@@ -21,6 +24,10 @@ export function start(root) {
   let autoFlip = false;
   let colors = readColors();
   const math = createMathPanel(root, sim);
+  const optMath = createOptMath(root, sim);
+  let mode = "pid";
+  let horizon = 2; // MPC look-ahead, seconds
+  let showGhosts = true;
   window.addEventListener("rb:theme", () => (colors = readColors()));
 
   function readColors() {
@@ -40,6 +47,68 @@ export function start(root) {
     sysBox.append(el("button", { type: "button", "data-v": k, "aria-pressed": String(k === key), text: s.short, title: s.name }));
   }
   segmented(sysBox, (k) => loadSystem(k));
+
+  // ---- Controller picker ----
+  const MODE_TEXT = {
+    mpc: {
+      title: "MPC, model predictive control",
+      about: "Plans the next couple of seconds from where the system is now, takes the first step, and plans again 20 times a second. The faded copies show where it expects to go.",
+    },
+    ilqr: {
+      title: "iLQR, the iterative linear quadratic regulator",
+      about: "Works out one whole plan, improving it a few dozen times until it stops getting better, then follows it with feedback. A kick or a new target makes it plan again.",
+    },
+  };
+  const MODE_BLURB = {
+    cartpole: "On MPC and iLQR the pivot turns freely and the pole starts hanging straight down, so the controller has to swing it up first. PID can't do that: it only ever pushes against the error it sees right now.",
+  };
+  function makeController(k) {
+    if (mode === "mpc") return new MPC(k, { N: Math.round(horizon / 0.05), dt: 0.05 });
+    if (mode === "ilqr") return new ILQRController(k);
+    return null;
+  }
+  function setMode(m) {
+    mode = m;
+    sim.setMode(m, makeController(key));
+    applyMode();
+  }
+  function applyMode() {
+    const opt = mode !== "pid";
+    for (const n of root.querySelectorAll(".pid-only")) n.hidden = opt;
+    for (const n of root.querySelectorAll(".opt-only")) n.hidden = !opt;
+    $("#opt-section").hidden = !opt;
+    for (const k of ["p", "i", "d"]) termRows[k].row.hidden = opt;
+    if (opt) {
+      $("#opt-title").textContent = MODE_TEXT[mode].title;
+      $("#opt-about").textContent = MODE_TEXT[mode].about;
+      $("#opt-horizon-row").hidden = mode !== "mpc";
+    }
+    const blurb = $("#pid-mode-blurb");
+    blurb.textContent = opt ? (MODE_BLURB[key] ?? "") : "";
+    blurb.hidden = !blurb.textContent;
+    const sys = SYSTEMS[key];
+    $("#pid-blurb").textContent = opt ? sys.blurbOpt ?? sys.blurb : sys.blurb;
+    syncSetpoint();
+    chartRange.response = null;
+    chartRange.error = null;
+    if (mode === "pid") math.update();
+    else optMath.update(key, mode);
+  }
+  segmented($("#pid-mode"), (m) => setMode(m));
+
+  const horizonSlider = $("#opt-horizon");
+  const horizonVal = $("#opt-horizon-val");
+  const showHorizon = () => (horizonVal.textContent = `${fmt(horizon, 1)} s`);
+  showHorizon();
+  horizonSlider.addEventListener("input", () => {
+    horizon = Number(horizonSlider.value);
+    showHorizon();
+    if (mode === "mpc" && sim.opt) {
+      sim.opt.N = Math.round(horizon / sim.opt.dt);
+      sim.opt.plan = null; // re-plan with the new length on the next tick
+    }
+  });
+  $("#opt-ghosts").addEventListener("change", (e) => (showGhosts = e.target.checked));
 
   // ---- Gains ----
   const gainIds = ["kp", "ki", "kd"];
@@ -135,8 +204,9 @@ export function start(root) {
   for (const [k, label, color] of [["p", "P", "--plot-p"], ["i", "I", "--plot-i"], ["d", "D", "--plot-d"], ["u", "u", "--plot-control"]]) {
     const fill = el("div", { class: "fill", style: `background:var(${color})` });
     const num = el("span", { class: "num" });
-    termBox.append(el("div", { class: "term" }, el("span", { text: label, style: k === "u" ? "font-weight:600" : "" }), el("div", { class: "bar" }, fill), num));
-    termRows[k] = { fill, num };
+    const rowEl = el("div", { class: "term" }, el("span", { text: label, style: k === "u" ? "font-weight:600" : "" }), el("div", { class: "bar" }, fill), num);
+    termBox.append(rowEl);
+    termRows[k] = { fill, num, row: rowEl };
   }
   const satNote = el("div", { class: "small subtle", style: "margin-top:4px" });
   termBox.after(satNote);
@@ -153,7 +223,7 @@ export function start(root) {
     }
     buildPresets();
     applyGains(sys.presets.tuned);
-    sim.reset();
+    sim.setMode(mode, makeController(k));
     const fixed = sys.setpoint.min === sys.setpoint.max;
     $("#pid-sp").closest(".gain").hidden = fixed;
     $("#pid-auto-label").textContent = fixed ? "Kick the pole every 6 s" : "Step the setpoint every 6 s";
@@ -170,6 +240,7 @@ export function start(root) {
     math.load(k);
     chartRange.response = null;
     chartRange.error = null;
+    applyMode();
   }
 
   // ---- Canvas sizing ----
@@ -217,6 +288,7 @@ export function start(root) {
       setSetpointDisplay(Math.round(ang));
     } else if (key === "cartpole" && first) {
       sim.state.w += x < w / 2 ? -0.6 : 0.6;
+      sim.opt?.disturbed?.();
       sim.markEvent();
     }
   }
@@ -248,10 +320,12 @@ export function start(root) {
     if (key === "drone") drawDrone(ctx, w, h, t, uFrac);
     else if (key === "arm") drawArm(ctx, w, h);
     else drawCartpole(ctx, w, h, uFrac);
+    if (mode !== "pid" && showGhosts) drawForecast(ctx, w, h);
 
     const badge = $("#pid-badge");
-    const y = sys.display(sys.measure(sim.state));
-    if (key === "cartpole" && Math.abs(sim.state.th) > 90 * DEG) {
+    // The wrapped value the charts use, so a free pole reads 0°, not 360°.
+    const y = sys.display(sim.history.length ? sim.history[sim.history.length - 1].y : sys.measure(sim.state));
+    if (key === "cartpole" && mode === "pid" && Math.abs(sim.state.th) > 90 * DEG) {
       badge.textContent = "Fallen. Press Reset.";
       badge.className = "sim-badge bad";
     } else {
@@ -352,6 +426,72 @@ export function start(root) {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+  }
+
+  /**
+   * The optimizer's plan, drawn as faded copies of the system along it: MPC's
+   * forecast from now, or what is left of iLQR's plan. Fades with time ahead.
+   */
+  function drawForecast(ctx, w, h) {
+    const X = sim.opt?.forecast() ?? [];
+    if (X.length < 2) return;
+    const every = key === "drone" ? 1 : Math.max(1, Math.round(0.2 / sim.opt.dt));
+    ctx.save();
+    if (key === "drone") {
+      // A dashed curve out to the right of the drone: altitude against time ahead.
+      const g = droneGeom(w, h);
+      const x0 = w / 2 + 40, span = w / 2 - 70;
+      const T = (X.length - 1) * sim.opt.dt;
+      ctx.strokeStyle = colors.accent;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 6]);
+      ctx.beginPath();
+      X.forEach((x, i) => {
+        const px = x0 + (i * sim.opt.dt / Math.max(T, 1e-6)) * span;
+        const py = g.toY(x[0]);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = colors.accent;
+      ctx.font = "13px Hyper, system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.fillText(`plan, next ${fmt(T, 1)} s`, x0 + span, g.toY(X[X.length - 1][0]) + 10);
+    } else if (key === "arm") {
+      const { cx, cy, L } = armGeom(w, h);
+      for (let i = every; i < X.length; i += every) {
+        const th = X[i][0];
+        ctx.globalAlpha = 0.45 * (1 - i / X.length) + 0.08;
+        ctx.strokeStyle = colors.accent;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.sin(th) * L, cy + Math.cos(th) * L);
+        ctx.stroke();
+      }
+    } else {
+      const { scale, groundY } = cartGeom(w, h);
+      const toX = (x) => w / 2 + (x - camX) * scale;
+      const ch = 0.18 * scale, cy = groundY - ch - 10, Lpx = scale * 0.95;
+      for (let i = every; i < X.length; i += every) {
+        const s = fromVec("cartpole", X[i]);
+        ctx.globalAlpha = 0.45 * (1 - i / X.length) + 0.08;
+        ctx.strokeStyle = colors.accent;
+        ctx.fillStyle = colors.accent;
+        ctx.lineWidth = 5;
+        const px = toX(s.x);
+        ctx.beginPath();
+        ctx.moveTo(px, cy);
+        ctx.lineTo(px + Math.sin(s.th) * Lpx, cy - Math.cos(s.th) * Lpx);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(px + Math.sin(s.th) * Lpx, cy - Math.cos(s.th) * Lpx, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   function drawArm(ctx, w, h) {
@@ -565,10 +705,13 @@ export function start(root) {
     ctx.restore();
   }
 
+  // The track sits low when the pole can only stand up, and higher when the
+  // pivot is free, so a hanging pole has room below it.
+  const cartGeom = (w, h) => ({ scale: Math.min(w, h * 1.6) / 6, groundY: h * (sim.free ? 0.48 : 0.78) });
+
   function drawCartpole(ctx, w, h, uFrac) {
     const s = sim.state;
-    const scale = Math.min(w, h * 1.6) / 6; // px per meter
-    const groundY = h * 0.78;
+    const { scale, groundY } = cartGeom(w, h); // scale: px per meter
     camX += (s.x - camX) * 0.08;
     const toX = (x) => w / 2 + (x - camX) * scale;
 
@@ -915,6 +1058,18 @@ export function start(root) {
     satNote.textContent = sim.last.saturated
       ? `Actuator at its limit (${sys.uLimit[0]} to ${sys.uLimit[1]} ${sys.uUnit}). Asking for more does nothing.`
       : `Bars are in ${sys.uUnit}, scaled to the actuator limit.`;
+
+    const stats = $("#opt-stats");
+    const o = sim.opt;
+    if (mode === "mpc" && o?.plan) {
+      stats.textContent = `Re-planning every ${fmt(o.dt * 1000, 0)} ms, ${fmt(o.N * o.dt, 1)} s ahead. ${o.solves} plans so far.`;
+    } else if (mode === "ilqr" && o?.plan) {
+      const T = o.plan.U.length * o.dt;
+      const c = o.plan.costs;
+      stats.textContent = `${o.t < T ? `Following the plan, ${fmt(o.t, 1)} of ${fmt(T, 1)} s.` : "Plan done, holding the goal."} Optimized in ${o.plan.iters} iterations, cost ${fmt(c[0], 0)} → ${fmt(c[c.length - 1], 0)}.`;
+    } else {
+      stats.textContent = "";
+    }
   }
 
   // ---- Loop ----
@@ -935,6 +1090,7 @@ export function start(root) {
             const targets = { drone: [3, 7], arm: [30, 100] };
             if (key === "cartpole") {
               sim.state.w += autoFlip ? 0.9 : -0.9;
+              sim.opt?.disturbed?.();
               sim.markEvent();
             } else {
               setSetpointDisplay(targets[key][autoFlip ? 1 : 0]);
@@ -948,7 +1104,8 @@ export function start(root) {
       if (readoutClock > 0.1) {
         readoutClock = 0;
         updateReadouts();
-        math.update();
+        if (mode === "pid") math.update();
+        else optMath.update(key, mode);
       }
     }
     requestAnimationFrame(frame);

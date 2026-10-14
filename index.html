@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>roboticsbench</title>
-<meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID tuning, a Kalman filter, localization and motion planning.">
+<meta name="description" content="Robotics tools that run in your browser: rotations, a URDF viewer, PID, MPC and iLQR control, a Kalman filter, localization and motion planning.">
 <link rel="canonical" href="https://roboticsbench.gwark.dev/">
 <meta property="og:title" content="roboticsbench">
-<meta property="og:description" content="Six robotics tools that run in your browser: rotations, a URDF viewer, PID tuning, a Kalman filter, localization and motion planning.">
+<meta property="og:description" content="Six robotics tools that run in your browser: rotations, a URDF viewer, PID, MPC and iLQR control, a Kalman filter, localization and motion planning.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="gwark.dev">
 <meta property="og:url" content="https://roboticsbench.gwark.dev/">
@@ -63,7 +63,7 @@
       <a href="#learn" data-tab="learn"><span>Learn</span></a>
       <a href="#rotations" data-tab="rotations"><span>Rotations</span></a>
       <a href="#urdf" data-tab="urdf"><span>URDF</span></a>
-      <a href="#pid" data-tab="pid"><span>PID</span></a>
+      <a href="#pid" data-tab="pid"><span>Control</span></a>
       <a href="#kalman" data-tab="kalman"><span>Kalman</span></a>
       <a href="#localization" data-tab="localization"><span>Localization</span></a>
       <a href="#planning" data-tab="planning"><span>Planning</span></a>
@@ -116,8 +116,8 @@
     </a>
     <a class="card fin-pid" href="#pid">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 18c3 0 3-12 6-12s3 9 5 9 2-5 4-5 2 2 5 2"/><path d="M2 12h20" stroke-dasharray="2 2.5" opacity=".6"/></svg></span>
-      <h2>PID tuning</h2>
-      <p>Tune a drone, an arm and an inverted pendulum, with the math live.</p>
+      <h2>Control</h2>
+      <p>PID, MPC and iLQR on a drone, an arm and an inverted pendulum, with the math live.</p>
     </a>
     <a class="card fin-kalman" href="#kalman">
       <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 19c4 0 5-13 10-13s6 13 10 13"/><path d="M12 6v13"/></svg></span>
@@ -415,14 +415,28 @@
 <!-- ======================= PID ======================= -->
 <section id="tool-pid" data-tool="pid" hidden>
   <div class="tool-head">
-    <h1>PID tuning</h1>
+    <h1>Control</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Move the gains and watch the system settle, overshoot or shake itself apart. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
+    <p>Three ways to drive the same systems. PID reacts to the error you have now. MPC plans a couple of seconds ahead, again and again. iLQR works out one whole plan, then follows it. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
   </div>
 
   <div class="pid-top">
-    <div class="segmented" id="pid-system" role="group" aria-label="System"></div>
+    <div class="pid-pickers">
+      <div class="pid-picker">
+        <span class="eyebrow">Controller</span>
+        <div class="segmented" id="pid-mode" role="group" aria-label="Controller">
+          <button type="button" data-v="pid" aria-pressed="true">PID</button>
+          <button type="button" data-v="mpc" aria-pressed="false">MPC</button>
+          <button type="button" data-v="ilqr" aria-pressed="false">iLQR</button>
+        </div>
+      </div>
+      <div class="pid-picker">
+        <span class="eyebrow">System</span>
+        <div class="segmented" id="pid-system" role="group" aria-label="System"></div>
+      </div>
+    </div>
     <p id="pid-blurb"></p>
+    <p class="small muted" id="pid-mode-blurb" hidden></p>
   </div>
 
   <div class="pid-layout">
@@ -454,7 +468,18 @@
     </div>
 
     <div class="panel">
-      <div class="side-section">
+      <div class="side-section" id="opt-section" hidden>
+        <p class="eyebrow" style="margin-bottom:6px" id="opt-title"></p>
+        <p class="small muted" id="opt-about"></p>
+        <div class="gain" id="opt-horizon-row">
+          <div class="gain-head"><label for="opt-horizon">Look-ahead</label><span class="mono small" id="opt-horizon-val"></span></div>
+          <input type="range" id="opt-horizon" min="0.5" max="2.5" step="0.1" value="2">
+        </div>
+        <p class="small" id="opt-stats" role="status"></p>
+        <label class="check"><input type="checkbox" id="opt-ghosts" checked> Show the plan</label>
+      </div>
+
+      <div class="side-section pid-only">
         <div class="gain">
           <div class="gain-head"><label for="g-kp">Kp <small>proportional</small></label><input class="field" id="g-kp-num" inputmode="decimal" aria-label="Kp value"></div>
           <input type="range" id="g-kp" step="any">
@@ -494,8 +519,8 @@
       </div>
 
       <div class="side-section toggle-list">
-        <label class="check"><input type="checkbox" id="pid-aw" checked> Anti-windup</label>
-        <label class="check"><input type="checkbox" id="pid-dmeas" checked> Derivative on measurement</label>
+        <label class="check pid-only"><input type="checkbox" id="pid-aw" checked> Anti-windup</label>
+        <label class="check pid-only"><input type="checkbox" id="pid-dmeas" checked> Derivative on measurement</label>
         <label class="check"><input type="checkbox" id="pid-noise"> Sensor noise</label>
       </div>
 
@@ -509,7 +534,10 @@
     <div class="panel" id="pid-math" style="margin-top:16px">
       <div class="panel-title"><h2>The math</h2><span class="small subtle">updates live</span></div>
       <div class="math-grid">
-        <div class="math-block">
+        <div class="math-block opt-only" id="math-opt-cost" hidden></div>
+        <div class="math-block opt-only" id="math-opt-solve" hidden></div>
+        <div class="math-block opt-only" id="math-opt-live" hidden></div>
+        <div class="math-block pid-only">
           <p class="eyebrow">Control law</p>
           <div class="eq" id="math-law"></div>
           <p class="eq-note" id="math-e"></p>
@@ -524,11 +552,11 @@
           <p class="small muted" id="math-plant-note"></p>
           <p class="small" id="math-plant-live"></p>
         </div>
-        <div class="math-block">
+        <div class="math-block pid-only">
           <p class="eyebrow">What the code runs, every step</p>
           <div id="math-discrete"></div>
         </div>
-        <div class="math-block">
+        <div class="math-block pid-only">
           <p class="eyebrow">Closed loop, linearized about the setpoint</p>
           <div class="eq" id="math-poly-form"></div>
           <div class="eq live" id="math-poly-live"></div>
