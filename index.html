@@ -240,7 +240,10 @@
       <div class="panel">
         <div class="panel-title">
           <h2>Preview</h2>
-          <button type="button" class="btn" id="rot-reset">Reset to identity</button>
+          <div class="btn-row">
+            <button type="button" class="btn" id="rot-random" title="Pick a rotation at random">Random</button>
+            <button type="button" class="btn" id="rot-reset">Reset to identity</button>
+          </div>
         </div>
         <div class="controls-row">
           <button type="button" class="btn solid" id="rot-play">
@@ -255,7 +258,7 @@
         </div>
         <div class="viewport" id="rot-viewport">
           <div class="play-caption" id="rot-caption" hidden></div>
-          <div class="legend"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="subtle">thin: world</span></div>
+          <div class="legend"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span><span class="subtle">thin: world</span><span class="spin-key">purple: turn axis</span></div>
           <div class="hint">Drag to orbit</div>
         </div>
 

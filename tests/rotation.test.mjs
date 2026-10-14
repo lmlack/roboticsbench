@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  randomQuat,
   EULER_ORDERS,
   axisAngleToQuat,
   eulerToQuat,
@@ -118,4 +119,19 @@ test("paste parsing", () => {
   assert.equal(parsePasted("[0.1, 0.2, 0.3, 0.9]").kind, "quat4");
   assert.equal(parsePasted("1e-3 2 3").kind, "vec3");
   assert.equal(parsePasted("1 2").kind, "unknown");
+});
+
+test("random rotations are unit quaternions spread over every angle", () => {
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const angles = [];
+  for (let i = 0; i < 2000; i++) {
+    const q = randomQuat(rand);
+    assert.ok(Math.abs(Math.hypot(...q) - 1) < 1e-12);
+    assert.ok(q[0] >= 0);
+    angles.push(2 * Math.acos(Math.min(1, q[0])));
+  }
+  // Uniform rotations have mean angle pi/2 + 2/pi, about 2.207 rad.
+  const mean = angles.reduce((a, b) => a + b, 0) / angles.length;
+  assert.ok(Math.abs(mean - (Math.PI / 2 + 2 / Math.PI)) < 0.05, `mean ${mean}`);
 });

@@ -16,6 +16,7 @@ export function themeColors() {
     z: new THREE.Color(cssVar("--axis-z")),
     accent: new THREE.Color(cssVar("--accent")),
     highlight: new THREE.Color(cssVar("--highlight")),
+    spin: new THREE.Color(cssVar("--spin-axis")),
   };
 }
 

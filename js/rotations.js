@@ -14,6 +14,7 @@ import {
   quatToEuler,
   quatToMatrix,
   quatToRotvec,
+  randomQuat,
   rotvecToQuat,
 } from "./rotation-math.js";
 import { axisTriad, createViewport, disposeObject, themeColors } from "./three-common.js";
@@ -214,6 +215,7 @@ export function start(root) {
   });
 
   $("#rot-reset").addEventListener("click", () => setQ(IDENTITY_Q, null));
+  $("#rot-random").addEventListener("click", () => setQ(randomQuat(), null));
 
   // ---- Code ----
   function renderCode() {
@@ -288,6 +290,7 @@ export function start(root) {
     body.add(plate);
     scene.add(grid, world, body);
     showQuat(q);
+    showAxisArrow();
   }
 
   function updatePreview() {
@@ -298,6 +301,7 @@ export function start(root) {
       return;
     }
     showQuat(q);
+    showAxisArrow();
   }
 
   // three stores quaternions as (x, y, z, w).
@@ -337,20 +341,34 @@ export function start(root) {
     }
   }
 
+  /**
+   * The axis-angle axis as a see-through arrow through the origin, pointing
+   * the way the right-hand rule turns. It shows while stopped and during a
+   * shortest-path play, and hides for Euler steps, which turn about other axes.
+   */
+  function showAxisArrow() {
+    clearAxisLine();
+    if (!body || (playing && playMode.get() !== "path")) return;
+    const { axis, angle } = quatToAxisAngle(q);
+    if (angle < 1e-6) return;
+    const mat = new THREE.MeshBasicMaterial({ color: themeColors().spin, transparent: true, opacity: 0.45, depthWrite: false });
+    const L = 1.45, head = 0.2;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 2 * L - head, 12), mat);
+    shaft.position.y = -head / 2;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, head, 20), mat);
+    tip.position.y = L - head / 2;
+    axisLine = new THREE.Group();
+    axisLine.add(shaft, tip);
+    axisLine.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...axis));
+    axisLine.renderOrder = 2;
+    scene.add(axisLine);
+    vp.requestRender();
+  }
+
   function startPlay() {
     playing = true;
     playStart = performance.now();
-    clearAxisLine();
-    if (playMode.get() === "path") {
-      const { axis, angle } = quatToAxisAngle(q);
-      if (angle > 1e-6) {
-        const dir = new THREE.Vector3(...axis).multiplyScalar(1.5);
-        const geom = new THREE.BufferGeometry().setFromPoints([dir.clone().negate(), dir]);
-        axisLine = new THREE.Line(geom, new THREE.LineDashedMaterial({ color: themeColors().accent, dashSize: 0.08, gapSize: 0.06 }));
-        axisLine.computeLineDistances();
-        scene.add(axisLine);
-      }
-    }
+    showAxisArrow();
     setPlayLabel();
     requestAnimationFrame(tick);
   }
@@ -358,7 +376,7 @@ export function start(root) {
   function stopPlay() {
     playing = false;
     caption.hidden = true;
-    clearAxisLine();
+    showAxisArrow();
     setPlayLabel();
     showQuat(q);
   }
@@ -378,7 +396,7 @@ export function start(root) {
       caption.hidden = false;
       caption.textContent = angle < 1e-6
         ? "Identity: nothing to turn"
-        : `${deg(angle * f)}° of ${deg(angle)}° about the dashed axis`;
+        : `${deg(angle * f)}° of ${deg(angle)}° about the see-through arrow`;
     } else {
       const order = orderSelect.value;
       const { angles } = quatToEuler(q, order, intrinsic());
