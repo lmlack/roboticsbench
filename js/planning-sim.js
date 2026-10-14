@@ -1,6 +1,6 @@
 // Motion planning on an occupancy grid: grid searches (BFS, Dijkstra, greedy,
-// A*, weighted A*) and sampling planners (RRT, RRT*). Pure JS, no DOM, so the
-// algorithms can be checked under node --test.
+// A*, weighted A*) and sampling planners (RRT, RRT*, PRM). Pure JS, no DOM, so
+// the algorithms can be checked under node --test.
 //
 // Coordinates: cell (x, y) covers [x, x + 1) by [y, y + 1). Grid paths run
 // through cell centers, so grid and tree paths share one collision check.
@@ -37,6 +37,10 @@ export const ALGOS = {
   rrtstar: {
     name: "RRT*", kind: "tree",
     blurb: "RRT that gives each new node the cheapest nearby parent and rewires neighbors through it. The path keeps getting shorter.",
+  },
+  prm: {
+    name: "PRM", kind: "roadmap",
+    blurb: "Probabilistic roadmap. It scatters random points over the free space, links each to its nearest neighbors, then runs A* on that network. Build the roadmap once and it answers any start and goal on the same map.",
   },
 };
 
@@ -897,6 +901,128 @@ function treePath(st, gx, gy) {
   return out.reverse();
 }
 
+// ---- PRM ----
+
+/**
+ * PRM as a generator, in three phases, yielding after every step:
+ *   "sample":  one random free point added to the roadmap
+ *   "connect": one node linked to its k nearest neighbors, where the straight
+ *              line between them is free
+ *   "query":   one node expanded by A* over the roadmap, h = straight-line
+ *              distance to the goal
+ * Start and goal are nodes 0 and 1, so the query is an ordinary graph search.
+ * Options: samples, k, seed.
+ */
+export function* prmSearch(grid, start, goal, opts = {}) {
+  const { samples = 400, k = 10, seed = 1 } = opts;
+  const rand = mulberry32(seed);
+  const cap = samples + 2;
+  const xs = new Float64Array(cap), ys = new Float64Array(cap);
+  const adj = [];
+  const edges = []; // flat pairs, for drawing
+  xs[0] = start.x + 0.5;
+  ys[0] = start.y + 0.5;
+  xs[1] = goal.x + 0.5;
+  ys[1] = goal.y + 0.5;
+  adj.push([], []);
+  const st = {
+    kind: "roadmap", phase: "sample", xs, ys, n: 2, samples, k, edges, edgeCount: 0,
+    current: -1, closed: null, expanded: 0, frontier: 0, iter: 0,
+    done: false, found: false, path: null, cost: Infinity,
+  };
+  if (!pointFree(grid, xs[0], ys[0]) || !pointFree(grid, xs[1], ys[1])) {
+    st.done = true;
+    yield st;
+    return st;
+  }
+
+  // Sample: rejection sampling, so every node sits in free space. A map that
+  // is nearly all wall gives up after a bounded number of tries.
+  for (let tries = 0; st.n < cap && tries < samples * 50; tries++) {
+    const x = rand() * grid.w, y = rand() * grid.h;
+    if (!pointFree(grid, x, y)) continue;
+    xs[st.n] = x;
+    ys[st.n] = y;
+    adj.push([]);
+    st.current = st.n++;
+    st.iter++;
+    yield st;
+  }
+
+  // Connect: each node to its k nearest. Links are undirected, so a pair is
+  // added once even when each is among the other's nearest.
+  st.phase = "connect";
+  const linked = new Set();
+  const order = new Int32Array(st.n);
+  const dist = new Float64Array(st.n);
+  for (let i = 0; i < st.n; i++) {
+    for (let j = 0; j < st.n; j++) {
+      order[j] = j;
+      dist[j] = (xs[j] - xs[i]) ** 2 + (ys[j] - ys[i]) ** 2;
+    }
+    const near = Array.from(order).filter((j) => j !== i).sort((a, b) => dist[a] - dist[b]).slice(0, k);
+    for (const j of near) {
+      const key = i < j ? i * cap + j : j * cap + i;
+      if (linked.has(key)) continue;
+      if (!segmentFree(grid, xs[i], ys[i], xs[j], ys[j])) continue;
+      linked.add(key);
+      const d = Math.sqrt(dist[j]);
+      adj[i].push(j, d);
+      adj[j].push(i, d);
+      edges.push(i, j);
+    }
+    st.edgeCount = edges.length / 2;
+    st.current = i;
+    st.iter++;
+    yield st;
+  }
+
+  // Query: A* from node 0 to node 1. Euclidean h never overestimates a path
+  // made of straight edges, so the result is the shortest through the roadmap.
+  st.phase = "query";
+  const g = new Float64Array(st.n).fill(Infinity);
+  const parent = new Int32Array(st.n).fill(-1);
+  const closed = new Uint8Array(st.n);
+  st.closed = closed;
+  const h = (i) => Math.hypot(xs[i] - xs[1], ys[i] - ys[1]);
+  const heap = new MinHeap();
+  let tie = 0;
+  g[0] = 0;
+  heap.push(0, h(0), tie++);
+  st.frontier = 1;
+  while (heap.size) {
+    const top = heap.pop();
+    const i = top.id;
+    if (closed[i]) continue;
+    closed[i] = 1;
+    st.frontier = heap.size;
+    st.expanded++;
+    st.current = i;
+    st.iter++;
+    if (i === 1) {
+      st.found = true;
+      st.cost = g[1];
+      const path = [];
+      for (let n = 1; n >= 0; n = parent[n]) path.push({ x: xs[n], y: ys[n] });
+      st.path = path.reverse();
+      break;
+    }
+    const a = adj[i];
+    for (let m = 0; m < a.length; m += 2) {
+      const j = a[m], ng = g[i] + a[m + 1];
+      if (closed[j] || ng >= g[j] - 1e-12) continue;
+      g[j] = ng;
+      parent[j] = i;
+      heap.push(j, ng + h(j), tie++);
+    }
+    yield st;
+  }
+  st.done = true;
+  st.current = -1;
+  yield st;
+  return st;
+}
+
 // ---- Helpers ----
 
 /** Drains a planner generator and returns its final state. */
@@ -907,6 +1033,7 @@ export function run(gen) {
 }
 
 export function planner(algo, grid, start, goal, opts = {}) {
+  if (ALGOS[algo].kind === "roadmap") return prmSearch(grid, start, goal, { samples: opts.samples, k: opts.k, seed: opts.seed });
   if (ALGOS[algo].kind === "tree") return treeSearch(grid, start, goal, { ...opts, star: algo === "rrtstar" });
   return gridSearch(grid, start, goal, { ...opts, algo });
 }
@@ -915,7 +1042,7 @@ const now = () => (globalThis.performance ? performance.now() : Date.now());
 
 /**
  * Runs every algorithm to completion on one map. Grid rows report expanded
- * nodes; tree rows report iterations used.
+ * nodes, tree rows iterations used, and PRM the nodes in its roadmap.
  */
 export function compareAll(grid, start, goal, opts = {}) {
   const rows = [];
@@ -926,7 +1053,7 @@ export function compareAll(grid, start, goal, opts = {}) {
     const grid_ = ALGOS[algo].kind === "grid";
     rows.push({
       algo,
-      work: grid_ ? s.expanded : s.found && algo === "rrt" ? s.firstIter : s.iter,
+      work: grid_ ? s.expanded : algo === "prm" ? s.n - 2 : s.found && algo === "rrt" ? s.firstIter : s.iter,
       found: s.found,
       length: s.found ? (grid_ ? s.cost : pathLength(s.path)) : null,
       ms,
