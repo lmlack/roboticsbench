@@ -25,11 +25,27 @@
 .kf-sw-meas { width: 9px; height: 9px; border-radius: 50%; background: var(--plot-control); }
 .kf-sw-steer { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
 .kf-sw-err { background: var(--plot-error); }
+.kf-sw-rej { width: 10px; height: 10px; border-radius: 0; background:
+  linear-gradient(45deg, transparent 42%, var(--bad-fg) 42% 58%, transparent 58%),
+  linear-gradient(-45deg, transparent 42%, var(--bad-fg) 42% 58%, transparent 58%); }
+.kf-sw-prior { height: 0; border-top: 3px dashed var(--plot-i); }
+.kf-sw-reading { background: var(--plot-control); }
+.kf-sw-post { height: 12px; background: color-mix(in oklab, var(--plot-measured) 30%, transparent); border-top: 3px solid var(--plot-measured); }
 .kf-sw-drop { height: 12px; background: var(--warn-bg); border: 1px solid var(--warn-fg); }
+
+/* Where the gain comes from: the curves beside their equations, stacked on a phone. */
+.kf-bells { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px 24px; align-items: start; }
+.kf-bells-plot canvas { display: block; width: 100%; height: 200px; }
+.kf-bells-math { display: grid; gap: 6px; align-content: start; }
+#kf-bells-note { margin: 12px 0 0; }
 
 .kf-metrics-note { margin: 10px 0 0; }
 .kf-sub { margin: 0 0 4px 24px; }
 #tool-kalman .gain p.small { margin: 0; }
+
+@media (max-width: 900px) {
+  .kf-bells { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (max-width: 640px) {
   .sim-canvas-wrap.kf-track-wrap { aspect-ratio: 16 / 10; }

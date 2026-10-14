@@ -8,6 +8,13 @@ export const HISTORY_SECONDS = 12;
 export const DROPOUT = { period: 10, start: 5, length: 3 }; // seconds
 export const P0 = [[4, 0], [0, 4]]; // starting uncertainty: 2 m and 2 m/s
 export const WARMUP_S = 12; // longer than the 10 s chart window
+// Outliers: about one position reading in 15 is way off, the kind of thing a
+// reflection or a glitch gives you.
+export const OUTLIER_RATE = 1 / 15;
+// Chi-square 99% points: a reading that fits the filter's own uncertainty
+// lands past these only 1% of the time. One number for position alone, two
+// with the velocity sensor fused.
+export const GATE = { 1: 6.63, 2: 9.21 };
 
 // Weak pull toward the middle of the track for "Random accel". Pure white-noise
 // acceleration drifts off without bound, faster every minute. These terms are
@@ -48,6 +55,8 @@ export const DEFAULTS = {
   fuseVel: false,
   sigmaV: 0.2, // m/s, velocity noise; the filter is told the true value
   dropout: false,
+  outliers: false,
+  gate: false, // reject readings whose d² is past GATE
   driveTarget: 0, // m, where "You steer" is pulling the cart
   filterSigmaZ: 0.5, // m, what the filter assumes; R = filterSigmaZ²
   filterQ: TRUE_Q,
@@ -119,6 +128,18 @@ export class KalmanFilter {
     return { F, Q };
   }
 
+  /**
+   * The innovation y (how far the reading is from the prediction), its
+   * covariance S, and d² = yᵀS⁻¹y: how surprising the reading is, in squared
+   * standard deviations.
+   */
+  innovation(z, H, R) {
+    const y = sub(z, mul(H, this.x));
+    const S = add(mul(mul(H, this.P), transpose(H)), R);
+    const d2 = mul(mul(transpose(y), inv(S)), y)[0][0];
+    return { y, S, d2 };
+  }
+
   update(z, H, R) {
     const xPrior = this.x, PPrior = this.P;
     const y = sub(z, mul(H, xPrior));
@@ -155,6 +176,9 @@ export class Simulation {
   }
 
   reset() {
+    // Outliers draw from their own stream, so turning them on doesn't change
+    // the cart's motion or the ordinary noise.
+    this.outlierRng = mulberry32(this.seed ^ 0x9e3779b9);
     const rng = mulberry32(this.seed);
     this.gauss = () => {
       const u = 1 - rng();
@@ -175,6 +199,13 @@ export class Simulation {
     this.last = null;
     this.totals = { n: 0, se: 0, inside: 0, measN: 0, measSe: 0 };
     this.record();
+  }
+
+  /** A reading that's way off: several meters, well past any sensible σ. */
+  outlierOffset() {
+    const r = this.outlierRng;
+    const mag = (2 + 8 * this.params.sigmaZ) * (0.75 + 0.5 * r());
+    return (r() < 0.5 ? -1 : 1) * mag;
   }
 
   /** Where "You steer" is pulling the cart, kept on the track. */
@@ -250,9 +281,13 @@ export class Simulation {
     const xPrior = f.x, PPrior = f.P;
     const dropped = p.dropout && inDropout(this.t);
 
-    let H = null, R = null, z = null, upd = null;
+    let H = null, R = null, z = null, upd = null, gate = null;
     if (!dropped) {
-      const zp = this.truth.p + p.sigmaZ * this.gauss();
+      let zp = this.truth.p + p.sigmaZ * this.gauss();
+      // Always draw, so the outlier pattern doesn't shift when they're toggled.
+      const roll = this.outlierRng();
+      const outlier = p.outliers && roll < OUTLIER_RATE;
+      if (outlier) zp += this.outlierOffset();
       const rz = p.filterSigmaZ ** 2;
       if (p.fuseVel) {
         const zv = this.truth.v + p.sigmaV * this.gauss();
@@ -264,14 +299,19 @@ export class Simulation {
         R = [[rz]];
         z = [[zp]];
       }
-      upd = f.update(z, H, R);
-      this.meas.push({ t: this.t, z: zp, truth: this.truth.p });
+      const inn = f.innovation(z, H, R);
+      const limit = GATE[z.length];
+      gate = { y: inn.y, S: inn.S, d2: inn.d2, limit, rejected: p.gate && inn.d2 > limit, outlier };
+      // A rejected reading never reaches the update: the filter keeps its
+      // prediction, and P keeps growing until a reading fits again.
+      if (!gate.rejected) upd = f.update(z, H, R);
+      this.meas.push({ t: this.t, z: zp, truth: this.truth.p, outlier, rejected: gate.rejected });
       this.totals.measN++;
       this.totals.measSe += (zp - this.truth.p) ** 2;
     }
     // Column 0 of K: how far a position innovation moves p and v.
     this.gains.push({ t: this.t, kp: upd ? upd.K[0][0] : null, kv: upd ? upd.K[1][0] : null });
-    this.last = { t: this.t, dt, q: p.filterQ, F, Q, xPrev, PPrev, xPrior, PPrior, H, R, z, ...upd, x: f.x, P: f.P, dropped };
+    this.last = { t: this.t, dt, q: p.filterQ, F, Q, xPrev, PPrev, xPrior, PPrior, H, R, z, ...upd, x: f.x, P: f.P, dropped, gate };
   }
 
   /**
@@ -332,8 +372,16 @@ export class Simulation {
       mn++;
       mse += (m.z - m.truth) ** 2;
     }
+    let outliers = 0, rejected = 0, rejectedOutliers = 0;
+    for (const m of this.meas) {
+      if (m.t < t0) continue;
+      if (m.outlier) outliers++;
+      if (m.rejected) rejected++;
+      if (m.outlier && m.rejected) rejectedOutliers++;
+    }
     const last = this.history[this.history.length - 1];
     return {
+      outliers, rejected, rejectedOutliers,
       estRmse: n ? Math.sqrt(se / n) : null,
       measRmse: mn ? Math.sqrt(mse / mn) : null,
       coverage: n ? inside / n : null,

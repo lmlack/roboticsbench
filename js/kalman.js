@@ -3,7 +3,7 @@
 // the current numbers, typeset by KaTeX. Everything put into innerHTML is
 // built from numbers.
 
-import { PRESETS, PROFILES, Simulation } from "./kalman-sim.js";
+import { GATE, PRESETS, PROFILES, Simulation } from "./kalman-sim.js";
 import { inl, mat, num, par, tex, unit, vec } from "./tex.js";
 import { cssVar, dockWhenNarrow, el, evalNumber, fmt, segmented } from "./util.js";
 
@@ -119,6 +119,12 @@ export function start(root) {
     $("#kf-sv-row").hidden = !e.target.checked;
   });
   $("#kf-drop").addEventListener("change", (e) => sim.set({ dropout: e.target.checked }));
+  $("#kf-outliers").addEventListener("change", (e) => sim.set({ outliers: e.target.checked }));
+  $("#kf-gate").addEventListener("change", (e) => {
+    sim.set({ gate: e.target.checked });
+    $(".kf-rej-key").hidden = !e.target.checked;
+    updateMath();
+  });
   const pauseBtn = $("#kf-pause");
   function setPaused(p) {
     paused = p;
@@ -152,8 +158,9 @@ export function start(root) {
   // ---- Canvas sizing ----
   const stage = $("#kf-canvas");
   const charts = $("#kf-charts");
+  const bells = $("#kf-bells");
   const sizes = new Map();
-  for (const c of [stage, charts]) {
+  for (const c of [stage, charts, bells]) {
     new ResizeObserver(() => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       c.width = Math.round(c.clientWidth * dpr);
@@ -298,6 +305,10 @@ export function start(root) {
       const age = sim.t - m.t;
       if (age > BLIP_LIFE || age < 0) continue;
       ctx.globalAlpha = 1 - age / BLIP_LIFE;
+      if (m.rejected) {
+        cross(ctx, toX(m.z), blipY, age < 0.05 ? 7 : 5, colors.bad);
+        continue;
+      }
       ctx.fillStyle = colors.meas;
       ctx.beginPath();
       ctx.arc(toX(m.z), blipY, age < 0.05 ? 6 : 4, 0, Math.PI * 2);
@@ -408,10 +419,25 @@ export function start(root) {
     if (now.drop) {
       badge.textContent = "Sensor dropout: no measurements";
       badge.className = "sim-badge bad";
+    } else if (sim.last?.gate?.rejected && sim.t - sim.last.t < 0.6) {
+      badge.textContent = "Reading rejected: too far off";
+      badge.className = "sim-badge bad";
     } else {
       badge.textContent = `${fmt(sim.params.rate, sim.params.rate % 1 ? 1 : 0)} Hz${sim.params.fuseVel ? ", position and velocity" : ""}`;
       badge.className = "sim-badge";
     }
+  }
+
+  /** A rejected reading: an X where the dot would have been. */
+  function cross(ctx, x, y, r, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r);
+    ctx.lineTo(x + r, y + r);
+    ctx.moveTo(x + r, y - r);
+    ctx.lineTo(x - r, y + r);
+    ctx.stroke();
   }
 
   function pill(ctx, text, x, y, color) {
@@ -504,10 +530,12 @@ export function start(root) {
       clip(ctx, P, left, right, () => {
         ctx.fillStyle = colors.meas;
         for (const m of meas) {
+          if (m.rejected) continue;
           ctx.beginPath();
           ctx.arc(tx(m.t), mapY(m.z, P, r), 2.5, 0, Math.PI * 2);
           ctx.fill();
         }
+        for (const m of meas) if (m.rejected) cross(ctx, tx(m.t), mapY(m.z, P, r), 4, colors.bad);
       });
       series(ctx, data, (p) => p.pe, P, r, tx, colors.est, 2.5);
     }
@@ -734,7 +762,13 @@ export function start(root) {
     set("#kf-m-est", enough ? `${fmt(m.estRmse, 3)} m` : "measuring", !enough);
     set("#kf-m-cov", enough ? `${fmt(m.coverage * 100, 0)} %` : "measuring", !enough);
     set("#kf-m-sig", `${fmt(m.sigma, 3)} m`);
-    $("#kf-m-note").textContent = `Over the last ${fmt(Math.min(WINDOW, m.span), 0)} s. RMSE is the root mean square error against the truth. Inside ±2σ should be near 95% when the filter's assumptions match reality.`;
+    let note = `Over the last ${fmt(Math.min(WINDOW, m.span), 0)} s. RMSE is the root mean square error against the truth. Inside ±2σ should be near 95% when the filter's assumptions match reality.`;
+    if (sim.params.outliers || sim.params.gate) {
+      const good = m.rejected - m.rejectedOutliers;
+      note += ` ${m.outliers} outlier${m.outliers === 1 ? "" : "s"}` +
+        (sim.params.gate ? `, ${m.rejectedOutliers} of them rejected${good ? `, plus ${good} good reading${good === 1 ? "" : "s"}` : ""}.` : ", none rejected.");
+    }
+    $("#kf-m-note").textContent = note;
   }
 
   // ---- The math ----
@@ -760,6 +794,8 @@ export function start(root) {
       <p class="eyebrow">Update</p>
       ${eq("y")}${eq("y-live", "eq live")}
       ${eq("s")}${eq("s-live", "eq live")}
+      ${eq("d2")}${eq("d2-live", "eq live")}
+      <p class="eq-note" id="kf-math-d2-note"></p>
       ${eq("k")}${eq("k-live", "eq live")}
       ${eq("xu")}${eq("xu-live", "eq live")}
       ${eq("pu")}${eq("pu-live", "eq live")}
@@ -769,6 +805,7 @@ export function start(root) {
       <p class="eyebrow">Reading the result</p>
       <p class="small verdict" id="kf-math-gain"></p>
       <p class="small verdict" id="kf-math-check"></p>
+      <p class="small verdict" id="kf-math-outliers" hidden></p>
       <p class="small subtle" id="kf-math-foot"></p>
     </div>`;
   const T = (id, src) => tex($(`#kf-math-${id}`), src);
@@ -778,6 +815,7 @@ export function start(root) {
   T("pp", "P^- = F P F^\\top + Q");
   T("y", "y = z - H\\,\\hat x^-");
   T("s", "S = H P^- H^\\top + R");
+  T("d2", "d^2 = y^\\top S^{-1} y");
   T("k", "K = P^- H^\\top S^{-1}");
   T("xu", "\\hat x = \\hat x^- + K y");
   T("pu", "P = (I - K H)\\,P^-");
@@ -804,7 +842,7 @@ export function start(root) {
     const R = L?.R ?? (p.fuseVel ? [[rz, 0], [0, p.sigmaV ** 2]] : [[rz]]);
     const Hsym = p.fuseVel ? "\\begin{bmatrix} 1 & 0 \\\\ 0 & 1 \\end{bmatrix}" : "\\begin{bmatrix} 1 & 0 \\end{bmatrix}";
     T("fh", `F = \\begin{bmatrix} 1 & \\Delta t \\\\ 0 & 1 \\end{bmatrix},\\quad H = ${Hsym}`);
-    const live = ["f-live", "h-live", "q-live", "r-live", "xp-live", "pp-live", "y-live", "s-live", "k-live", "xu-live", "pu-live"];
+    const live = ["f-live", "h-live", "q-live", "r-live", "xp-live", "pp-live", "y-live", "s-live", "d2-live", "k-live", "xu-live", "pu-live"];
     if (!L) {
       for (const id of live) T(id, "");
       $("#kf-math-status").textContent = "Waiting for the first filter step.";
@@ -813,6 +851,9 @@ export function start(root) {
       $("#kf-math-check").textContent = "";
       $("#kf-math-check").className = "small verdict";
       $("#kf-math-model-note").textContent = "";
+      $("#kf-math-d2-note").textContent = "";
+      $("#kf-math-outliers").hidden = true;
+      drawBellMath(null);
       return;
     }
     T("f-live", `F = ${mat([["1", num(L.dt, 3)], ["0", "1"]])}`);
@@ -833,13 +874,28 @@ export function start(root) {
 
     const status = $("#kf-math-status");
     const gainNode = $("#kf-math-gain");
+    const g = L.gate;
+    const dof = g ? L.z.length : (p.fuseVel ? 2 : 1);
+    const limit = GATE[dof];
+    $("#kf-math-d2-note").innerHTML = `How surprising the reading is, in squared standard deviations. A reading that fits the filter's own uncertainty lands past ${inl(num(limit, 2))} only 1% of the time${dof === 2 ? " (with two readings)" : ""}.` +
+      (p.gate ? " Past that, it's thrown out." : " Reject outliers throws out anything past that.");
     if (L.dropped) {
-      for (const [id, v] of [["y-live", "y"], ["s-live", "S"], ["k-live", "K"]]) T(id, `${v}\\ \\text{not computed: no measurement}`);
+      for (const [id, v] of [["y-live", "y"], ["s-live", "S"], ["d2-live", "d^2"], ["k-live", "K"]]) T(id, `${v}\\ \\text{not computed: no measurement}`);
       T("xu-live", `\\hat x = \\hat x^- = ${vec(L.x.map((r) => r[0]))}`);
       T("pu-live", `P = P^- = ${mat(L.P, 4)}`);
       status.className = "math-status bad";
       status.textContent = "Dropout: no measurement this step, so there is no update.";
       gainNode.textContent = "Dropout: the filter only predicts. Each step adds Q to P, so the band widens until measurements return. The first update after the gap has a large gain because P is large.";
+    } else if (g.rejected) {
+      T("y-live", `y = ${M(g.y)}`);
+      T("s-live", `S = ${M(g.S, 4)}`);
+      T("d2-live", `d^2 = ${num(g.d2, 2)} > ${num(g.limit, 2)}`);
+      T("k-live", "K\\ \\text{not used: reading rejected}");
+      T("xu-live", `\\hat x = \\hat x^- = ${vec(L.x.map((r) => r[0]))}`);
+      T("pu-live", `P = P^- = ${mat(L.P, 4)}`);
+      status.className = "math-status bad";
+      status.textContent = `Rejected: this reading is ${fmt(Math.sqrt(g.d2), 1)} standard deviations from the prediction, so the filter keeps its prediction.`;
+      gainNode.textContent = "A rejected reading is treated like a dropout: the filter only predicts this step, and P grows. If the cart really did jump, P keeps growing until a reading fits again.";
     } else {
       const Hx = L.xPrior.slice(0, L.H.length);
       // A scalar being subtracted goes in parentheses when negative, so it
@@ -847,13 +903,16 @@ export function start(root) {
       const sub = Hx.length === 1 && Hx[0].length === 1 ? par(Hx[0][0], 3) : M(Hx);
       T("y-live", `y = ${M(L.z)} - ${sub} = ${M(L.y)}`);
       T("s-live", `S = ${M(L.S, 4)}`);
+      T("d2-live", `d^2 = ${num(g.d2, 2)} ${g.d2 > g.limit ? ">" : "\\le"} ${num(g.limit, 2)}`);
       T("k-live", `K = ${M(L.K)}`);
       T("xu-live", `\\hat x = ${vec(L.x.map((r) => r[0]))}`);
       T("pu-live", `P = ${mat(L.P, 4)}`);
-      status.className = "math-status subtle";
-      status.textContent = p.fuseVel
-        ? "Both readings arrived, so y has two entries and S and K are 2×2."
-        : "One position reading arrived, so y and S are single numbers.";
+      status.className = g.d2 > g.limit ? "math-status bad" : "math-status subtle";
+      status.textContent = g.d2 > g.limit
+        ? "This reading is past the gate, but Reject outliers is off, so the filter takes it anyway and the estimate jumps toward it."
+        : p.fuseVel
+          ? "Both readings arrived, so y has two entries and S and K are 2×2."
+          : "One position reading arrived, so y and S are single numbers.";
       const k = L.K[0][0];
       const lean = k > 0.7 ? "The filter mostly follows the sensor."
         : k < 0.15 ? "The filter mostly follows its model."
@@ -882,7 +941,162 @@ export function start(root) {
         check.innerHTML = `Consistent: the error is inside ${band} ${pct} of the time, close to the expected 95%.`;
       }
     }
+    const ov = $("#kf-math-outliers");
+    ov.hidden = !p.outliers;
+    if (p.outliers) {
+      if (!p.gate) {
+        ov.className = "small verdict is-bad";
+        ov.textContent = `Outliers are getting through: ${m.outliers} in the last ${fmt(Math.min(WINDOW, m.span), 0)} s. The filter has no way to tell a bad reading from a real move, so each one yanks the estimate meters off. Turn on Reject outliers.`;
+      } else {
+        const good = m.rejected - m.rejectedOutliers;
+        ov.className = "small verdict is-ok";
+        const them = m.rejectedOutliers === 1 ? "it" : "them";
+        ov.textContent = `The gate threw out ${m.rejectedOutliers} of ${m.outliers} outlier${m.outliers === 1 ? "" : "s"} in the last ${fmt(Math.min(WINDOW, m.span), 0)} s${good ? `, and ${good} good reading${good === 1 ? "" : "s"} along with ${them}` : ""}. The estimate barely notices.`;
+      }
+    }
+    drawBellMath(L);
     $("#kf-math-when").textContent = paused ? "paused" : "updates live";
+  }
+
+  // ---- Where the gain comes from ----
+  // The position part of the last update in 1D: the prediction and the
+  // reading as bell curves, and their product. Drawn from a snapshot taken
+  // with the math, so the curves and the numbers beside them always agree.
+  let bellSnap = null;
+  T2("kf-bell-k", "K = \\dfrac{\\sigma_-^2}{\\sigma_-^2 + \\sigma_z^2}");
+  T2("kf-bell-mu", "\\mu = \\mu_- + K\\,(z - \\mu_-)");
+  T2("kf-bell-var", "\\sigma^2 = (1 - K)\\,\\sigma_-^2");
+  function T2(id, src) {
+    tex($(`#${id}`), src);
+  }
+
+  function drawBellMath(L) {
+    const note = $("#kf-bells-note");
+    if (!L) {
+      bellSnap = null;
+      for (const id of ["kf-bell-k-live", "kf-bell-mu-live", "kf-bell-var-live"]) T2(id, "");
+      note.textContent = "";
+      return;
+    }
+    const mu0 = L.xPrior[0][0], v0 = L.PPrior[0][0];
+    const snap = { mu0, v0, truth: sim.history[sim.history.length - 1].p, dropped: L.dropped, rejected: !!L.gate?.rejected };
+    if (!L.dropped) {
+      const vz = L.R[0][0], z = L.z[0][0];
+      const k = v0 / (v0 + vz);
+      Object.assign(snap, { z, vz, k, mu: mu0 + k * (z - mu0), v: (1 - k) * v0 });
+      T2("kf-bell-k-live", `K = \\dfrac{${num(v0, 4)}}{${num(v0, 4)} + ${num(vz, 4)}} = ${num(k, 3)}`);
+      // z − μ₋ as one number: the full subtraction runs too wide beside the plot.
+      T2("kf-bell-mu-live", `\\mu = ${num(mu0, 2)} + ${num(k, 3)} \\times ${par(z - mu0, 2)} = ${num(snap.mu, 2)}`);
+      T2("kf-bell-var-live", `\\sigma^2 = (1 - ${num(k, 3)}) \\times ${num(v0, 4)} = ${num(snap.v, 4)}`);
+      if (snap.rejected) {
+        // The gate stopped it: nothing moves, whatever K would have been.
+        T2("kf-bell-mu-live", `\\text{rejected, so } \\mu = \\mu_- = ${num(mu0, 2)}`);
+        T2("kf-bell-var-live", `\\sigma^2 = \\sigma_-^2 = ${num(v0, 4)}`);
+      }
+    } else {
+      T2("kf-bell-k-live", "\\text{no reading this step}");
+      T2("kf-bell-mu-live", `\\mu = \\mu_- = ${num(mu0, 2)}`);
+      T2("kf-bell-var-live", `\\sigma^2 = \\sigma_-^2 = ${num(v0, 4)}`);
+    }
+    bellSnap = snap;
+    const sym = (s) => inl(s);
+    if (L.dropped) {
+      note.innerHTML = `No reading this step, so there's only the prediction. Each step without one makes it wider, and the next reading gets a bigger ${sym("K")}.`;
+    } else if (snap.rejected) {
+      note.innerHTML = `The reading (red, dashed) is so far from the prediction that the two curves barely overlap. Multiplying them would put the estimate somewhere neither of them believes, so the gate throws the reading out and keeps the prediction.`;
+    } else {
+      note.innerHTML = `Multiply the prediction's bell curve by the reading's and you get another bell curve, narrower than both, sitting between them. ${sym("K")} is how far along it lands, from the prediction (0) to the reading (1). A wide prediction pulls ${sym("K")} toward 1, a wide reading pulls it toward 0. ` +
+        (sim.params.fuseVel
+          ? `With the velocity sensor fused, this shows the position reading on its own, so its ${sym("K")} is a little different from the chart's.`
+          : `It's the same number as ${sym("K")} for p on the Gain chart.`);
+    }
+  }
+
+  function drawBells() {
+    const c = ctxOf(bells);
+    if (!c) return;
+    const { ctx, w, h } = c;
+    ctx.clearRect(0, 0, w, h);
+    const s = bellSnap;
+    if (!s) return;
+    ctx.font = FONT;
+    const curves = [{ mu: s.mu0, v: s.v0, color: colors.kv, dash: [6, 5] }];
+    if (!s.dropped) {
+      curves.push({ mu: s.z, v: s.vz, color: s.rejected ? colors.bad : colors.meas, dash: s.rejected ? [3, 4] : [] });
+      if (!s.rejected) curves.push({ mu: s.mu, v: s.v, color: colors.est, fill: true });
+    }
+    let lo = Infinity, hi = -Infinity;
+    for (const k of curves) {
+      const sd = Math.sqrt(k.v);
+      lo = Math.min(lo, k.mu - 3.2 * sd);
+      hi = Math.max(hi, k.mu + 3.2 * sd);
+    }
+    lo = Math.min(lo, s.truth);
+    hi = Math.max(hi, s.truth);
+    const pad = 8, base = h - 26, top = 10;
+    const X = (m) => pad + ((m - lo) / (hi - lo)) * (w - 2 * pad);
+    const pdf = (k, m) => Math.exp(-((m - k.mu) ** 2) / (2 * k.v)) / Math.sqrt(2 * Math.PI * k.v);
+    const peak = Math.max(...curves.map((k) => pdf(k, k.mu)));
+    const Y = (d) => base - (d / peak) * (base - top);
+
+    // Axis with a few meter ticks
+    ctx.strokeStyle = colors.lineStrong;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(pad, base);
+    ctx.lineTo(w - pad, base);
+    ctx.stroke();
+    ctx.fillStyle = colors.subtle;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const m of niceTicks(lo, hi, w < 420 ? 4 : 6)) {
+      const x = X(m);
+      if (x < 22 || x > w - 22) continue;
+      ctx.fillRect(x - 0.5, base, 1, 5);
+      ctx.fillText(`${trimNum(m).replace("-", "−")} m`, x, base + 6);
+    }
+
+    for (const k of curves) {
+      ctx.beginPath();
+      const n = 160;
+      for (let i = 0; i <= n; i++) {
+        const m = lo + ((hi - lo) * i) / n;
+        const x = X(m), y = Y(pdf(k, m));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      if (k.fill) {
+        ctx.save();
+        ctx.lineTo(X(hi), base);
+        ctx.lineTo(X(lo), base);
+        ctx.closePath();
+        ctx.fillStyle = k.color;
+        ctx.globalAlpha = 0.22;
+        ctx.fill();
+        ctx.restore();
+        // Redraw the outline alone, without the closing edges.
+        ctx.beginPath();
+        for (let i = 0; i <= n; i++) {
+          const m = lo + ((hi - lo) * i) / n;
+          if (i === 0) ctx.moveTo(X(m), Y(pdf(k, m)));
+          else ctx.lineTo(X(m), Y(pdf(k, m)));
+        }
+      }
+      ctx.strokeStyle = k.color;
+      ctx.lineWidth = k.fill ? 2.5 : 2;
+      ctx.setLineDash(k.dash ?? []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Truth: a short tick up from the axis.
+    const tx = X(s.truth);
+    ctx.strokeStyle = colors.truth;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tx, base);
+    ctx.lineTo(tx, base - 18);
+    ctx.stroke();
   }
 
   // ---- Loop ----
@@ -897,6 +1111,7 @@ export function start(root) {
     if (!paused) sim.advance(dt * speed);
     drawTrack();
     drawCharts();
+    drawBells();
     readoutClock += dt;
     mathClock += dt;
     if (readoutClock > 0.1) {

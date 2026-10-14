@@ -576,7 +576,7 @@
   <div class="tool-head">
     <h1>Kalman filter</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>A cart moves along a track and a noisy sensor reports its position. The filter blends a constant-velocity model with each reading. Set what the filter assumes apart from the true noise and see whether its error band stays honest, or steer the cart yourself and watch a filter that was never told about the maneuver.</p>
+    <p>A cart moves along a track and a noisy sensor reports its position. The filter blends a constant-velocity model with each reading. Set what the filter assumes apart from the true noise and see whether its error band stays honest, throw in readings that are way off and see what it takes to ignore them, or steer the cart yourself and watch a filter that was never told about the maneuver.</p>
   </div>
 
   <div class="pid-top">
@@ -599,6 +599,7 @@
           <span class="kf-steer-key" hidden><i class="kf-swatch kf-sw-steer"></i>where you are steering</span>
           <span><i class="kf-swatch kf-sw-err"></i>error</span>
           <span><i class="kf-swatch kf-sw-drop"></i>dropout</span>
+          <span class="kf-rej-key" hidden><i class="kf-swatch kf-sw-rej"></i>rejected reading</span>
         </div>
       </div>
 
@@ -618,6 +619,30 @@
           <span class="small subtle">last 10 s</span>
         </div>
         <div class="charts-wrap"><canvas id="kf-charts" aria-label="Position, error and gain over the last 10 seconds"></canvas></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <h2>Where the gain comes from</h2>
+          <span class="small subtle" id="kf-bells-when">last reading</span>
+        </div>
+        <div class="kf-bells">
+          <div class="kf-bells-plot">
+            <canvas id="kf-bells" aria-label="The prediction's bell curve and the reading's, and the narrower one they combine into"></canvas>
+            <div class="kf-legend small" aria-hidden="true">
+              <span><i class="kf-swatch kf-sw-prior"></i>prediction</span>
+              <span><i class="kf-swatch kf-sw-reading"></i>reading</span>
+              <span><i class="kf-swatch kf-sw-post"></i>combined</span>
+              <span><i class="kf-swatch kf-sw-truth"></i>truth</span>
+            </div>
+          </div>
+          <div class="kf-bells-math">
+            <div class="eq" id="kf-bell-k"></div><div class="eq live" id="kf-bell-k-live"></div>
+            <div class="eq" id="kf-bell-mu"></div><div class="eq live" id="kf-bell-mu-live"></div>
+            <div class="eq" id="kf-bell-var"></div><div class="eq live" id="kf-bell-var-live"></div>
+          </div>
+        </div>
+        <p class="small" id="kf-bells-note"></p>
       </div>
     </div>
 
@@ -653,6 +678,7 @@
             <p class="small subtle">The filter is told this value.</p>
           </div>
           <label class="check"><input type="checkbox" id="kf-drop"> Sensor dropout, 3 s of every 10 s</label>
+          <label class="check"><input type="checkbox" id="kf-outliers"> Outliers, about 1 reading in 15 way off</label>
         </div>
       </div>
 
@@ -666,6 +692,10 @@
         <div class="gain">
           <div class="gain-head"><label for="kf-fq">Process noise <small>q, m²/s³</small></label><input class="field" id="kf-fq-num" inputmode="decimal" aria-label="Assumed process noise q"></div>
           <input type="range" id="kf-fq" min="-4" max="2" step="any" aria-label="Assumed process noise, log scale">
+        </div>
+        <div class="toggle-list" style="margin-bottom:12px">
+          <label class="check"><input type="checkbox" id="kf-gate"> Reject outliers</label>
+          <p class="small subtle kf-sub">Throws out any reading too far from the prediction to be believable.</p>
         </div>
         <p class="eyebrow" style="margin-bottom:6px">Presets</p>
         <div class="preset-row" id="kf-presets"></div>
