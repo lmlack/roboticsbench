@@ -55,6 +55,12 @@
 .learn-body { display: grid; gap: 10px; color: var(--fg-muted); line-height: 1.55; }
 .learn-body p { margin: 0; }
 .learn-body b { color: var(--fg); }
+/* Every lesson has the same shape: the idea, things to try, and what comes next. */
+.learn-try { background: var(--raised); border-radius: 12px; padding: 10px 14px; color: var(--fg-muted); }
+.learn-try b { color: var(--fg); }
+.learn-try ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.learn-up-next { color: var(--fg-subtle); }
+.learn-up-next b { color: var(--teal); }
 .learn-math-head {
   margin: 18px 0 8px; font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--teal);

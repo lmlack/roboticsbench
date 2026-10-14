@@ -535,6 +535,9 @@ table.jac tr:last-child td { border-bottom: 0; }
 }
 .map-card-empty svg { width: 26px; height: 26px; }
 .sim-canvas-wrap.drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
+/* The drop hint only means something while a file is being dragged over. */
+#plan-stage-wrap .hint { display: none; }
+#plan-stage-wrap.drop-target .hint { display: block; }
 
 /* Bringing your own map is an action, so it gets a row of its own rather than
    a line of help text folded away under a disclosure triangle. The dashed

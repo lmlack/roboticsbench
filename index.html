@@ -142,7 +142,7 @@
   <div class="tool-head">
     <h1>Robot arm basics</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>A short class in eight steps: where things are, how an arm moves, how to make one reach a point, how to plan a move, and how a robot maps a place it has never seen. Every step has an arm to play with and the math beside it, updating as you go.</p>
+    <p>A short class on how robots move and find their way, in eight steps that build on each other: where things are, how an arm moves, how to make it reach a point, how to plan a move, and how a robot maps a place it's never seen. Every step has something to play with, things to try, and the math right beside it.</p>
   </div>
 
   <nav class="learn-steps" id="learn-steps" aria-label="Lessons"></nav>
@@ -417,7 +417,7 @@
   <div class="tool-head">
     <h1>Control</h1>
     <span class="swoosh" aria-hidden="true"></span>
-    <p>Three ways to drive the same systems. PID reacts to the error you have now. MPC plans a couple of seconds ahead, again and again. iLQR works out one whole plan, then follows it. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
+    <p>Three ways to drive the same systems. <b>PID</b> (proportional, integral, derivative) reacts to the error you have right now. <b>MPC</b> (model predictive control) plans a couple of seconds ahead, over and over. <b>iLQR</b> (iterative linear quadratic regulator) works out one whole plan, then follows it. The physics runs live at 800 Hz with the controller at 200 Hz.</p>
   </div>
 
   <div class="pid-top">
@@ -699,9 +699,9 @@
       <summary class="small">How do they differ?</summary>
       <ul class="small muted">
         <li><b>Particle filter:</b> many sampled guesses at the pose. Guesses that explain the measurements survive resampling, so it can hold several at once.</li>
-        <li><b>EKF:</b> one Gaussian, updated by linearizing the motion and measurement models.</li>
-        <li><b>UKF:</b> one Gaussian, carried through the models by seven sigma points instead of a linearization.</li>
-        <li><b>EKF-SLAM:</b> an EKF that is never given the map. It adds each landmark the first time it sees one, then improves the robot and the whole map together. Its faded crosses and ellipses are the map it has built.</li>
+        <li><b>EKF</b> (extended Kalman filter): one Gaussian, updated by linearizing the motion and measurement models.</li>
+        <li><b>UKF</b> (unscented Kalman filter): one Gaussian, carried through the models by seven sigma points instead of a linearization.</li>
+        <li><b>EKF-SLAM:</b> SLAM is simultaneous localization and mapping. This one is an EKF that is never given the map. It adds each landmark the first time it sees one, then improves the robot and the whole map together. Its faded crosses and ellipses are the map it has built.</li>
         <li><b>Grid:</b> a probability for every 25 cm cell and 22.5° heading. Slow to update, but it can hold any shape of belief.</li>
         <li><b>Dead reckoning:</b> adds up the odometry and ignores the landmarks.</li>
       </ul>
@@ -727,7 +727,7 @@
         <div class="loc-legend small">
           <span class="loc-key loc-key-truth"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 8 2 2.5v11z" fill="currentColor"/></svg>True pose</span>
           <span class="loc-key loc-key-pf"><svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor" opacity="0.6"><rect x="2" y="3" width="3" height="3"/><rect x="9" y="2" width="3" height="3"/><rect x="5" y="9" width="3" height="3"/><rect x="11" y="10" width="3" height="3"/></g></svg>Particles</span>
-          <span class="loc-key loc-key-ekf"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="7" ry="4.5" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.5"/></svg>EKF and UKF 95% ellipses</span>
+          <span class="loc-key loc-key-ekf"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="7" ry="4.5" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="1.5"/></svg>EKF, UKF and SLAM 95% ellipses</span>
           <span class="loc-key loc-key-grid"><svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="1" y="1" width="7" height="7" opacity="0.25"/><rect x="8" y="1" width="7" height="7" opacity="0.6"/><rect x="1" y="8" width="7" height="7" opacity="0.6"/><rect x="8" y="8" width="7" height="7" opacity="0.9"/></g></svg>Grid belief</span>
           <span class="loc-key loc-key-lm"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0 10 6l6 2-6 2-2 6-2-6-6-2 6-2z" class="loc-star"/></svg>Landmark</span>
           <span class="loc-key loc-key-wall"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h12" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>Wall</span>

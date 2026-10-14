@@ -353,16 +353,19 @@ export function start(root) {
   const LESSONS = [
     {
       title: "Frames: where is anything?",
+      part: "Part 1 · Where things are",
       short: "Frames",
       dim: "2d",
       box: { x0: -0.9, x1: 2.7, y0: -0.6, y1: 2.4 },
       hint: "Move the base with the sliders",
       body: () => `
-        <p>A position only means something <b>relative to a frame</b>: an origin plus a set of axes. The <b>world frame W</b> is fixed to the room. The robot's <b>base frame B</b> sits wherever the robot was bolted down, turned however it was installed.</p>
-        <p>Move the base. The tool tip <b>P</b> does not move relative to the base, so its base coordinates ${inl("p_B")} stay the same, but its world coordinates ${inl("p_W")} change. Same point, two addresses.</p>
-        <p>To convert, turn by the base's angle, then add where the base is. A <b>transform</b> ${inl("T")} packs both steps into one matrix.</p>
-        <p><b>Homogeneous coordinates</b> are what make that work. A rotation matrix can turn a point but cannot shift it, because multiplying a matrix by the origin always gives the origin. So write the point with a 1 on the end, ${inl("(x, y, 1)")}, and put the shift in an extra column: ${inl("T = \\begin{bmatrix} R & t \\\\ 0 & 1 \\end{bmatrix}")}. Multiplying ${inl("T")} by ${inl("(x, y, 1)")} turns the point and adds ${inl("t")} in one go, and the bottom row keeps the 1 in place for the next matrix.</p>
-        <p>That buys two things. <b>Chaining</b>: going through several frames is just multiplying their matrices, ${inl("T_{AC} = T_{AB}\\,T_{BC}")}, which is how the arm in the next lessons is built. <b>Going back</b>: the inverse is ${inl("T^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix}")}, no general matrix inversion needed. A direction rather than a point gets a 0 instead of the 1, so it turns but never shifts. In 3D it is the same idea with a 4×4 matrix.</p>`,
+        <p>Before a robot can move anything, it needs to know where things are. And "where" always depends on what you're measuring from.</p>
+        <p>That reference is called a <b>frame</b>: a starting point plus a set of axes. The <b>world frame W</b> is fixed to the room. The robot's <b>base frame B</b> sits wherever the robot was bolted down, turned however it was installed.</p>
+        <p>The tool tip <b>P</b> has an address in each one. Its base address ${inl("p_B")} stays the same when you move the base, because the arm moves with it. Its world address ${inl("p_W")} changes.</p>
+        <p>To get from one to the other, turn by the base's angle, then add where the base is. A <b>transform</b> ${inl("T")} does both in a single matrix, using a trick called <b>homogeneous coordinates</b>: write the point with a 1 on the end, ${inl("(x, y, 1)")}, and put the shift in an extra column, ${inl("T = \\begin{bmatrix} R & t \\\\ 0 & 1 \\end{bmatrix}")}. A plain rotation matrix can only turn a point. With the extra 1, one multiplication turns it and shifts it.</p>
+        <p>Two things make that worth it. Going through several frames is just multiplying their matrices, ${inl("T_{AC} = T_{AB}\\,T_{BC}")}, which is exactly how the arms in the next lessons are built. And going back is easy: ${inl("T^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix}")}. A direction, as opposed to a point, gets a 0 instead of the 1, so it turns but never shifts.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Move the base with the sliders. Watch ${inl("p_W")} change while ${inl("p_B")} stays put.</li><li>Turn the base and see the whole arm turn with it.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> an arm is just a chain of these frames, one per joint. Working out where that chain puts the tool is forward kinematics.</p>`,
       controls() {
         const b = s2.base;
         return [sliders(
@@ -398,15 +401,19 @@ export function start(root) {
       },
     },
     {
-      title: "Forward kinematics: joints in, pose out",
+      title: "Forward kinematics: angles in, position out",
+      part: "Part 2 · A flat arm",
       short: "Forward kinematics",
       dim: "2d",
       box: { x0: -1.9, x1: 1.9, y0: -1.9, y1: 1.9 },
       hint: "Turn the joints with the sliders",
       body: () => `
-        <p><b>Forward kinematics (FK)</b> answers: given the joint angles, where is the tool? Follow the chain: turn by ${inl("\\theta_1")}, walk ${inl("\\ell_1")} along the first link, turn by ${inl("\\theta_2")}, walk ${inl("\\ell_2")}. Each step is a transform, and multiplying them in order gives the tool's pose.</p>
-        <p>There is always exactly one answer, and it is cheap to compute. That is why FK is called the easy direction.</p>
-        <p>The shaded ring is the <b>workspace</b>, every point the tip can reach. Its outer edge is the arm stretched straight, ${inl("\\ell_1 + \\ell_2")}; the inner edge is the arm folded back, ${inl("|\\ell_1 - \\ell_2|")}.</p>`,
+        <p>Now let's put frames to work. An arm is a chain: base, joint, link, joint, link, tool. Each joint adds a frame.</p>
+        <p><b>Forward kinematics</b> (FK) answers one question: if I know the joint angles, where's the tool? Turn by ${inl("\\theta_1")}, go ${inl("\\ell_1")} along the first link, turn by ${inl("\\theta_2")}, go ${inl("\\ell_2")}. Each step is a transform from lesson 1, and multiplying them in order gives the tool's <b>pose</b>: where it is and which way it points.</p>
+        <p>There's always exactly one answer, and it's quick to work out. That's why FK is called the easy direction.</p>
+        <p>The shaded ring is the <b>workspace</b>, every spot the tip can reach: as far as ${inl("\\ell_1 + \\ell_2")} with the arm straight, and as close as ${inl("|\\ell_1 - \\ell_2|")} with it folded back.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Turn on <i>Trace the tip</i> and sweep joint 2. The tip draws a circle around the elbow.</li><li>Try to get the tip to the inner edge of the ring.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> usually you know where you want the tool and need the angles. That's the other direction.</p>`,
       controls() {
         return [
           sliders(
@@ -444,16 +451,19 @@ export function start(root) {
       },
     },
     {
-      title: "Inverse kinematics: pose in, joints out",
+      title: "Inverse kinematics: position in, angles out",
+      part: "Part 2 · A flat arm",
       short: "Inverse kinematics",
       dim: "2d",
       box: { x0: -1.9, x1: 1.9, y0: -1.9, y1: 1.9 },
       hint: "Drag anywhere to move the target",
       drag: true,
       body: () => `
-        <p><b>Inverse kinematics (IK)</b> runs the other way: here is where the tool should be, find the joint angles. Drag the target around.</p>
-        <p>Usually there are <b>two answers</b>, elbow up and elbow down; the faded arm is the one not chosen. Outside the ring there are <b>none</b>, and the arm can only point at the target. Real arms have more ways to have many answers or none, which is why IK is the hard direction.</p>
-        <p>For two links, the triangle from base to elbow to tip gives a closed form: the law of cosines fixes the elbow angle, then ${inl("\\theta_1")} aims the arm.</p>`,
+        <p>Last lesson went from angles to a position. Most of the time you need the reverse: here's where the tool should go, so what angles get it there? That's <b>inverse kinematics</b> (IK).</p>
+        <p>It's harder because the answer isn't always one thing. Usually there are <b>two</b>, elbow up and elbow down. The faded arm is the one you didn't pick. Outside the ring there are <b>none</b>, and the best the arm can do is point at the target.</p>
+        <p>For two links there's a neat shortcut. Base, elbow and tip make a triangle, so the law of cosines gives the elbow angle, and then ${inl("\\theta_1")} just aims the arm.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Drag the target around.</li><li>Flip between elbow up and elbow down: both reach the same spot.</li><li>Drag the target outside the ring and see what the arm does.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> everything so far has been flat. Real arms work in 3D, and that starts with turning in 3D.</p>`,
       controls() {
         return [el("div", { class: "learn-row" },
           seg("Elbow", [["up", "Elbow up"], ["down", "Elbow down"]], s2.elbow, (v) => { s2.elbow = v; render(); }),
@@ -497,12 +507,16 @@ export function start(root) {
     },
     {
       title: "Rotations in 3D, and SO(3)",
+      part: "Part 3 · A real arm in 3D",
       short: "Rotations, SO(3)",
       dim: "3d",
       body: () => `
-        <p>In 3D, an orientation takes <b>three numbers</b>. Here they are yaw, pitch and roll: turn about Z, then about the new Y, then about the newer X. The thick axes are the turned frame; the thin ones are the world.</p>
-        <p>Write the turned axes down as the columns of a 3×3 matrix and you have the <b>rotation matrix</b> ${inl("R")}. Every valid ${inl("R")} has columns of length one at right angles to each other, ${inl("R^\\top R = I")}, and ${inl("\\det R = +1")}, so it never mirrors. All such matrices together are called <b>SO(3)</b>, the special orthogonal group: orthogonal for ${inl("R^\\top R = I")}, special for the +1.</p>
-        <p><b>Order matters.</b> Tick the box to see the same three angles applied in the opposite order. The rotation converter tab takes any of these between quaternions, Euler angles and matrices.</p>`,
+        <p>Moving to 3D, positions are easy: just add a third number. Turning is the tricky part. In 2D it was one angle. In 3D it takes three.</p>
+        <p>Here they're yaw, pitch and roll: turn about Z, then about the new Y, then about the newer X. The thick axes are the turned frame, and the thin ones are the world.</p>
+        <p>Write the turned axes down as the columns of a 3×3 matrix and you've got the <b>rotation matrix</b> ${inl("R")}. A real rotation always has columns of length 1 at right angles to each other, ${inl("R^\\top R = I")}, and ${inl("\\det R = +1")}, so it never mirrors anything. The set of all of them is called <b>SO(3)</b>, the <i>special orthogonal group</i> in 3D: orthogonal for ${inl("R^\\top R = I")}, special for the +1.</p>
+        <p><b>Order matters.</b> The same three angles in a different order give a different result.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Set all three sliders to something, then tick <i>Show the other order</i> and see how far apart the two frames end up.</li><li>Open it in the rotation converter, which translates between quaternions, Euler angles and matrices.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> now we can describe how each joint of a 3D arm is turned. Put six of them together and you've got a real arm.</p>`,
       controls() {
         const set = (i) => (v) => { s3.ypr[i] = v * DEG; render(); };
         return [
@@ -542,12 +556,16 @@ export function start(root) {
     },
     {
       title: "Forward kinematics in 3D",
+      part: "Part 3 · A real arm in 3D",
       short: "FK in 3D",
       dim: "3d",
       body: () => `
-        <p>An industrial arm chains <b>six joints</b>. Each adds one transform: shift along its link, then turn about its axis. Multiply all six and you have the tool's pose in the world, a rotation ${inl("R")} and a position ${inl("p")} together in one 4×4 matrix. It is the homogeneous matrix from lesson 1 with one more dimension: ${inl("R")} is now 3×3, ${inl("p")} has three entries, and the bottom row is ${inl("[0\\ 0\\ 0\\ 1]")}.</p>
-        <p>Coral joints <b>bend</b> (about their Y); teal joints <b>twist</b> (about their Z). The small axes at each joint show that joint's own frame, and the big ones at the end are the tool frame.</p>
-        <p>This is the same calculation the URDF viewer tab runs on any robot you load.</p>`,
+        <p>This is lesson 2's forward kinematics with lesson 4's 3D rotations. An industrial arm has <b>six joints</b>.</p>
+        <p>Each joint adds a transform: go along its link, then turn about its axis. Multiply all six and you get where the tool is and which way it points, in one 4×4 matrix. It's the same homogeneous matrix as lesson 1, one size up: ${inl("R")} is 3×3, ${inl("p")} has three numbers, and the bottom row is ${inl("[0\\ 0\\ 0\\ 1]")}.</p>
+        <p>Coral joints <b>bend</b> (about their own Y) and teal joints <b>twist</b> (about their own Z). The small axes show each joint's own frame, and the big ones at the end are the tool frame.</p>
+        <p>The URDF viewer tab runs this same calculation on any robot you load.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Move one joint at a time and watch which frames move: every frame after that joint, and none before it.</li><li>Press <i>Home pose</i>, then twist the last joint. The tool spins but doesn't move.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> like before, the useful question is the reverse: how do you make this arm reach a point?</p>`,
       controls() {
         const items = ARM6.joints.map((j, i) => slider({
           label: `${i + 1}. ${j.name}`, min: Math.round(-j.limit / DEG), max: Math.round(j.limit / DEG), value: s3.q[i] / DEG,
@@ -581,12 +599,16 @@ export function start(root) {
     },
     {
       title: "Inverse kinematics in 3D, and the Jacobian",
+      part: "Part 3 · A real arm in 3D",
       short: "IK and the Jacobian",
       dim: "3d",
       body: () => `
-        <p>Six joints have no tidy closed form in general, so arms are usually solved <b>numerically</b>: from the current joints, take a small step that moves the tip toward the target, and repeat. The yellow ball is the <b>target</b>, the point the tip should reach; move it with the sliders and watch the arm converge on it.</p>
-        <p>The <b>Jacobian</b> ${inl("J")} says how fast the tip moves for each joint's speed. Turning it around converts "move the tip this way" into "turn the joints this much". The damping ${inl("\\lambda")} keeps the step sensible where ${inl("J")} cannot be inverted.</p>
-        <p>That happens at a <b>singularity</b>, where the arm loses a direction it can move in: fully stretched, or with two wrist axes in line. <b>Manipulability</b> ${inl("w")} measures how far the arm is from one, and drops to zero there. Try the buttons.</p>`,
+        <p>Lesson 3 solved a two-link arm with one triangle. Six joints have no tidy formula like that, so arms are usually solved step by step instead.</p>
+        <p>Start from the joints you have, nudge them so the tip moves a little toward the target, and repeat until it gets there. The yellow ball is the <b>target</b>, the point the tip should reach.</p>
+        <p>The <b>Jacobian</b> ${inl("J")} is what tells you how to nudge. It says how fast the tip moves for each joint's speed. Turn it around and "move the tip this way" becomes "turn the joints this much". The damping ${inl("\\lambda")} keeps those nudges sensible when ${inl("J")} can't be turned around.</p>
+        <p>That happens at a <b>singularity</b>: a pose where the arm loses a direction it can move in, like when it's stretched out straight or two wrist axes line up. <b>Manipulability</b> ${inl("w")} says how far you are from one, and it drops to zero there.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Move the target with the sliders and watch the arm work its way there.</li><li>Press <i>Straight up (singular)</i> and <i>Stretch out (singular)</i> and watch ${inl("w")} go to zero.</li><li>Press <i>Out of reach</i>: the arm gets as close as it can.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> reaching a point is one thing. Some moves need a whole plan, not just a nudge in the right direction.</p>`,
       controls() {
         const set = (i) => (v) => { s3.target[i] = v; s3.singular = null; startSolve(); };
         const items = [
@@ -649,7 +671,7 @@ export function start(root) {
         return [
           `e = p_{\\text{target}} - p_{\\text{tip}} = ${vec(e)}, \\quad \\|e\\| ${err < 1e-4 ? "< 0.1" : `= ${num(err * 1000, 1)}`}\\,\\text{mm}`,
           `\\Delta q = J_v^\\top \\left(J_v J_v^\\top + \\lambda^2 I\\right)^{-1} e, \\quad \\lambda = ${num(s3.lambda, 2)}`,
-          { note: "With six joints and only three position numbers to match, there are endless answers. The solver uses the spare freedom to drift back toward the home pose, so the arm does not end up in a knot." },
+          { note: "With six joints and only three numbers to match, there are endless answers. The solver uses the spare freedom to drift back toward the home pose, so the arm doesn't end up in a knot." },
           { note: `${inl("J_v")}, the top three rows of ${inl("J")}: one column per joint, how the tip moves (m per radian) when only that joint turns.` },
           `J_v = ${mat(J.slice(0, 3), 2)}`,
           `w = \\sqrt{\\det\\left(J J^\\top\\right)} = ${num(w, 4)}${singular ? "\\quad \\text{(singular)}" : ""}`,
@@ -659,15 +681,19 @@ export function start(root) {
     },
     {
       title: "Planning ahead: iLQR and MPC",
+      part: "Part 4 · Beyond the arm",
       short: "iLQR and MPC",
       dim: "2d",
       box: { x0: -1.6, x1: 4.0, y0: -1.25, y1: 2.95 },
       gridLabel: false,
       hint: "",
       body: () => `
-        <p>Some jobs need a plan, not just a reaction. This arm's motor is too weak to lift it straight up: holding it out level takes ${inl(`mgL = ${MGL}`)} N·m, and the motor gives a few. A controller that only pushes against the error it sees right now would push toward the top forever and get nowhere.</p>
-        <p><b>iLQR</b> plans the whole move. It starts from a guess and improves it over and over: each pass linearizes the arm around the current plan, solves that easier problem from the end backward, and keeps the change only if the cost goes down. The chart shows every pass, faint to bold. The final plan swings the arm back and forth to build up speed, then lifts it.</p>
-        <p><b>MPC</b> uses the same solver but re-plans every 100 ms from where the arm really is. Kick the arm while it follows a plan blindly and it misses. Switch to MPC and kick it again: the next plan just starts from the kick.</p>`,
+        <p>So far the question has been where the arm should be. Now it's how to get there, when you can't just push straight toward the goal.</p>
+        <p>This arm's motor is too weak to lift it straight up. Holding it out level takes ${inl(`mgL = ${MGL}`)} N·m, and the motor only has a few. Push toward the top and it'll never get there. It has to swing back and forth to build up speed first, so it needs a plan.</p>
+        <p><b>iLQR</b>, the <i>iterative linear quadratic regulator</i>, makes that plan. It starts from a guess and keeps improving it. Each pass treats the arm as simple (linear) around the current plan, finds the best fix for that simpler problem, and keeps the fix only if it actually lowers the cost. That inner step is the <b>LQR</b> part: a linear model with a quadratic cost has an exact best answer. The chart shows every pass, faint to bold.</p>
+        <p><b>MPC</b>, <i>model predictive control</i>, uses the same solver in a loop. Every 100 ms it re-plans from wherever the arm actually is, follows the first bit, then plans again. That's what makes it hold up when something unexpected happens.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Watch the plan come together, pass by pass, then let it run.</li><li>Press <i>Kick</i> partway through. Following the plan blindly, it misses.</li><li>Switch to <i>Re-plan (MPC)</i> and kick it again. It recovers.</li><li>Lower the motor strength and count the swings it needs.</li></ul></div>
+        <p class="learn-up-next"><b>Up next:</b> everything so far assumed the robot knows where it is. Last step: what if it doesn't even have a map?</p>`,
       controls() {
         return [
           sliders(
@@ -783,7 +809,7 @@ export function start(root) {
           { note: "So it can't lift the arm straight up. It has to swing back and forth to build up speed first." },
           `J = \\sum_k \\big( e_k^\\top Q\\, e_k + R\\,\\tau_k^2 \\big) + e_N^\\top Q_f\\, e_N`,
           `Q = \\operatorname{diag}(${SWING_WEIGHTS.Q.join(", ")}),\\quad Q_f = \\operatorname{diag}(${SWING_WEIGHTS.Qf.join(", ")}),\\quad R = ${SWING_WEIGHTS.R}`,
-          { note: `A light charge for being away from the top along the way and a heavy one at the end. Charge heavily all the way and swinging away first looks expensive, so the planner settles for hanging partway up.` },
+          { note: `It charges a little for being away from the top along the way, and a lot for not being there at the end. If it charged a lot the whole way, swinging away first would look too expensive, and the plan would get stuck partway up.` },
         ];
         if (sim.mode === "follow" && sim.plan) {
           const c = sim.plan.costs;
@@ -800,15 +826,19 @@ export function start(root) {
     },
     {
       title: "SLAM: building the map as you go",
+      part: "Part 4 · Beyond the arm",
       short: "SLAM",
       dim: "2d",
       box: { x0: -0.3, x1: 10.3, y0: -0.4, y1: 7.6 },
       grid: 1,
       hint: "",
       body: () => `
-        <p>Localization assumes someone gave you a map. Often nobody did. <b>SLAM</b>, simultaneous localization and mapping, builds the map and finds the robot on it at the same time.</p>
-        <p>This robot drives a loop with a short-range sensor. The first time it sees a landmark, it adds it to the map where the measurement says, and that landmark inherits all the robot's uncertainty so far. The crosses are its map and the ellipses show how sure it is. Small wheel errors add up as it goes round, so landmarks it maps later are less certain.</p>
-        <p>Then it gets back to the start and sees its first landmarks again: a <b>loop closure</b>. The filter has kept track of how every landmark's error is tied to the robot's, so that one sighting corrects the robot and pulls the whole map back into place. Watch the chart below drop when it happens. Dead reckoning never looks at landmarks, so it just keeps drifting.</p>`,
+        <p>Lesson 1 asked "where is anything?" This last step asks it from the robot's side, with no map to go on.</p>
+        <p>The Localization tab finds a robot on a map you hand it. <b>SLAM</b>, <i>simultaneous localization and mapping</i>, has to build the map and find itself on it at the same time.</p>
+        <p>This robot drives a loop with a short-range sensor. The first time it sees a landmark, it adds it to its map where the measurement says, and that landmark picks up all the robot's uncertainty so far. The crosses are its map and the ellipses show how sure it is. Small wheel errors add up as it goes, so landmarks it maps later are less certain.</p>
+        <p>Then it gets back to the start and sees its first landmarks again. That's a <b>loop closure</b>. The filter, an <b>EKF</b> (<i>extended Kalman filter</i>, like on the Localization tab), has kept track of how every landmark's error is tied to the robot's. So that one sighting fixes the robot and pulls the whole map back into place.</p>
+        <div class="learn-try"><b>Try it</b><ul><li>Watch the chart below the map drop when the loop closes.</li><li>Shrink the sensor range or turn up wheel slip so it drifts more before it gets back.</li><li>Compare dead reckoning (dashed), which never looks at landmarks, so it just keeps drifting.</li></ul></div>
+        <p class="learn-up-next"><b>That's the class.</b> You've gone from frames to a robot mapping a place it's never seen. Each tab up top goes deeper on one of these.</p>`,
       controls() {
         return [
           el("div", { class: "learn-row" },
@@ -1068,7 +1098,7 @@ export function start(root) {
       b.setAttribute("aria-label", `Lesson ${i + 1}: ${LESSONS[i].short}`);
     });
     $("#learn-title").textContent = l.title;
-    $("#learn-count").textContent = `${index + 1} of ${LESSONS.length}`;
+    $("#learn-count").textContent = `${l.part} · ${index + 1} of ${LESSONS.length}`;
     $("#learn-body").innerHTML = l.body();
     $("#learn-prev").disabled = index === 0;
     const next = $("#learn-next");

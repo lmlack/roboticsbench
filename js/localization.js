@@ -274,10 +274,15 @@ export function start(root) {
     flashUntil = performance.now() + 2500;
     showHint();
   }
+  // On a phone the standing hint repeats the Landmark / Wall switch right
+  // above the map and covers what is drawn there, so only flashes show.
+  const narrow = window.matchMedia("(max-width: 640px)");
+  narrow.addEventListener("change", () => showHint());
   function showHint() {
-    const text = flashText && performance.now() < flashUntil
+    const flashing = flashText && performance.now() < flashUntil;
+    const text = flashing
       ? flashText
-      : focused ? "Arrow keys or WASD drive the robot" : HINTS[editMode];
+      : narrow.matches ? "" : focused ? "Arrow keys or WASD drive the robot" : HINTS[editMode];
     if (hint.textContent !== text) hint.textContent = text;
   }
 
