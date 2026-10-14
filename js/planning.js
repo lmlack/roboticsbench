@@ -10,6 +10,7 @@ import {
 } from "./planning-sim.js";
 import { copyText, cssVar, dockWhenNarrow, el, evalNumber, fmt, segmented } from "./util.js";
 import { inl, num, tex } from "./tex.js";
+import { createArmPlanner } from "./planning-arm.js";
 
 // Expansions (or iterations) per frame. Fractions skip frames.
 const SPEEDS = [0.25, 0.5, 1, 2, 3, 5, 10, 20, 50, 100, 250, 1000, Infinity];
@@ -24,7 +25,7 @@ export function start(root) {
   // stats and the comparison table.
   dockWhenNarrow($("#plan-run").closest(".side-section"), wrap.closest(".panel"));
   let map = makePreset("clutter", 1);
-  const opt = { algo: "astar", conn: 8, heuristic: "octile", weight: 2, step: 3, goalBias: 0.05, budget: 3000 };
+  const opt = { algo: "astar", conn: 8, heuristic: "octile", weight: 2, step: 3, goalBias: 0.05, budget: 3000, samples: 400, k: 10 };
   let speedIdx = 6;
   let editMode = "draw";
   let active = true;
@@ -82,9 +83,10 @@ export function start(root) {
     $("#plan-blurb").textContent = a.blurb;
     $("#plan-grid-opts").hidden = a.kind !== "grid";
     $("#plan-tree-opts").hidden = a.kind !== "tree";
-    const tree = a.kind === "tree";
-    $("#plan-m-work-label").textContent = tree ? "Iterations" : "Nodes expanded";
-    $("#plan-m-frontier-label").textContent = tree ? "Tree nodes" : "Frontier size";
+    $("#plan-prm-opts").hidden = a.kind !== "roadmap";
+    const tree = a.kind === "tree", roadmap = a.kind === "roadmap";
+    $("#plan-m-work-label").textContent = tree ? "Iterations" : roadmap ? "Roadmap nodes" : "Nodes expanded";
+    $("#plan-m-frontier-label").textContent = tree ? "Tree nodes" : roadmap ? "Roadmap links" : "Frontier size";
     updateMath();
   }
 
@@ -115,6 +117,8 @@ export function start(root) {
   bindGain("plan-stepsize", "step", { digits: 1, min: 0.5, max: 8, onSet: optionChanged });
   bindGain("plan-bias", "goalBias", { digits: 2, min: 0, max: 0.5, onSet: optionChanged });
   bindGain("plan-budget", "budget", { digits: 0, min: 100, max: 5000, onSet: optionChanged });
+  bindGain("plan-samples", "samples", { digits: 0, min: 50, max: 1500, onSet: optionChanged });
+  bindGain("plan-k", "k", { digits: 0, min: 2, max: 30, onSet: optionChanged });
 
   const speed = $("#plan-speed");
   speed.max = SPEEDS.length - 1;
@@ -397,8 +401,9 @@ export function start(root) {
     return n;
   }
   function newRun() {
-    const tree = ALGOS[opt.algo].kind === "tree";
-    runOpts = { ...opt, seed: tree ? runSeed++ : 0 };
+    // Sampling planners draw new points every run; grid searches never vary.
+    const random = ALGOS[opt.algo].kind !== "grid";
+    runOpts = { ...opt, seed: random ? runSeed++ : 0 };
     totalSteps = countSteps();
     gen = makeGen();
     cur = null;
@@ -648,6 +653,45 @@ export function start(root) {
       }
     }
 
+    if (cur?.kind === "roadmap") {
+      ctx.strokeStyle = colors.lineStrong;
+      ctx.lineWidth = Math.max(1, dpr);
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      const E = cur.edges;
+      for (let m = 0; m < E.length; m += 2) {
+        ctx.moveTo(cur.xs[E[m]] * kx, cur.ys[E[m]] * ky);
+        ctx.lineTo(cur.xs[E[m + 1]] * kx, cur.ys[E[m + 1]] * ky);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      const dotR = Math.max(1.6 * dpr, kx * 0.18);
+      ctx.fillStyle = colors.fg;
+      ctx.beginPath();
+      for (let i = 2; i < cur.n; i++) {
+        ctx.moveTo(cur.xs[i] * kx + dotR, cur.ys[i] * ky);
+        ctx.arc(cur.xs[i] * kx, cur.ys[i] * ky, dotR, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      // Nodes the query has closed, as the grid searches show closed cells.
+      if (cur.closed) {
+        ctx.fillStyle = colors.accent;
+        ctx.beginPath();
+        for (let i = 2; i < cur.n; i++) {
+          if (!cur.closed[i]) continue;
+          ctx.moveTo(cur.xs[i] * kx + dotR * 1.6, cur.ys[i] * ky);
+          ctx.arc(cur.xs[i] * kx, cur.ys[i] * ky, dotR * 1.6, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      if (cur.current >= 2 && !cur.done) {
+        ctx.fillStyle = colors.highlight;
+        ctx.beginPath();
+        ctx.arc(cur.xs[cur.current] * kx, cur.ys[cur.current] * ky, Math.max(3.5 * dpr, kx * 0.35), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     if (cur?.path) {
       ctx.strokeStyle = colors.accent;
       ctx.lineWidth = Math.max(3 * dpr, kx * 0.4);
@@ -681,6 +725,7 @@ export function start(root) {
   // ---- Readouts ----
   function updateReadouts() {
     const tree = ALGOS[opt.algo].kind === "tree";
+    const roadmap = ALGOS[opt.algo].kind === "roadmap";
     const set = (id, text, pending = false) => {
       const node = $(id);
       node.textContent = text;
@@ -691,8 +736,8 @@ export function start(root) {
     if (!cur) {
       for (const id of ["#plan-m-work", "#plan-m-frontier", "#plan-m-length", "#plan-m-found"]) set(id, "n/a", true);
     } else {
-      set("#plan-m-work", tree ? `${cur.iter} / ${cur.budget}` : String(cur.expanded));
-      set("#plan-m-frontier", String(tree ? cur.n : cur.frontier));
+      set("#plan-m-work", tree ? `${cur.iter} / ${cur.budget}` : roadmap ? `${cur.n - 2} / ${cur.samples}` : String(cur.expanded));
+      set("#plan-m-frontier", String(tree ? cur.n : roadmap ? cur.edgeCount : cur.frontier));
       set("#plan-m-length", cur.found ? fmt(cur.cost, 2) : "n/a", !cur.found);
       set("#plan-m-found", cur.found ? "yes" : cur.done ? "no" : "not yet", !cur.done && !cur.found);
     }
@@ -701,9 +746,10 @@ export function start(root) {
     let text, bad = false;
     if (!cur) text = gen ? "Ready" : "Press Run or Step";
     else if (cur.done && !cur.found) {
-      text = tree ? "Budget used, no path" : "No path";
+      text = tree ? "Budget used, no path" : roadmap ? "No path through the roadmap" : "No path";
       bad = true;
     } else if (cur.done) text = tree && opt.algo === "rrtstar" ? "Done, best path shown" : "Path found";
+    else if (playing && roadmap) text = { sample: "Sampling", connect: "Connecting", query: "Searching the roadmap" }[cur.phase];
     else if (playing) text = tree ? (cur.found ? "Improving the path" : "Growing the tree") : "Searching";
     else text = "Paused";
     badge.textContent = text;
@@ -731,7 +777,8 @@ export function start(root) {
       const a = ALGOS[r.algo];
       const name = r.algo === "wastar" ? `${a.name} (ε = ${fmt(opt.weight, 1)})` : a.name;
       const tree = a.kind === "tree";
-      const workCell = el("td", {}, el("span", { text: String(r.work) }), tree ? el("span", { class: "subtle", style: sans, text: " iter." }) : null);
+      const unit = tree ? " iter." : a.kind === "roadmap" ? " nodes" : null;
+      const workCell = el("td", {}, el("span", { text: String(r.work) }), unit ? el("span", { class: "subtle", style: sans, text: unit }) : null);
       const row = el("tr", { style: r.algo === opt.algo ? "background:var(--accent-soft)" : "" },
         el("th", { class: "row", scope: "row", text: name }),
         workCell,
@@ -763,6 +810,7 @@ export function start(root) {
     astar: `A*: ${inl("\\varepsilon = 1")}.`,
     wastar: null, // filled live with the current ε
     rrt: "RRT, RRT* (rapidly-exploring random tree): no priority. The tree grows toward random samples.",
+    prm: `PRM (probabilistic roadmap): A* over the roadmap's links, with ${inl("h")} the straight-line distance.`,
   };
   const mk = (tag, cls) => el(tag, { class: cls });
   tex($("#plan-math-f"), "f(n) = g(n) + \\varepsilon\\, h(n)");
@@ -786,10 +834,15 @@ export function start(root) {
     rText.innerHTML = `Each new node takes the cheapest parent within ${inl("r")}, then any neighbor within ${inl("r")} that would be cheaper through the new node switches to it. Edges are checked cell by cell, so no corner is clipped.`;
   }
 
+  tex($("#plan-math-prm-v"), "V = \\{q_\\text{start},\\ q_\\text{goal},\\ q_1, \\dots, q_n\\}");
+  tex($("#plan-math-prm-e"), "E = \\{\\, (i, j) : j \\in \\operatorname{kNN}(i),\\ \\overline{q_i q_j} \\text{ free} \\,\\}");
+  $("#plan-math-prm-note").innerHTML = `${inl("q_1")} to ${inl("q_n")} are random points in free space. ${inl("\\operatorname{kNN}(i)")} is the ${inl("k")} nearest neighbors of point ${inl("i")}, and ${inl("\\overline{q_i q_j}")} is the straight line between two points. A link is kept only if that line misses every wall. A* then searches this network instead of the grid. Nothing in the roadmap depends on the start or goal, so on a map that doesn't change, a robot builds it once and reuses it for every trip.`;
+
   let mathClock = 0;
   function updateMath() {
     const algo = opt.algo;
     const tree = ALGOS[algo].kind === "tree";
+    const roadmap = ALGOS[algo].kind === "roadmap";
     const optimum = compareRows?.find((r) => r.algo === "dijkstra")?.length ?? null;
 
     // Priority: which line applies, and the live node.
@@ -819,7 +872,9 @@ export function start(root) {
     } else {
       liveEl.hidden = true;
       liveNote.hidden = false;
-      liveNote.textContent = tree ? "RRT and RRT* do not rank nodes." : "Press Step to see g, h and f for each expanded node.";
+      liveNote.textContent = tree ? "RRT and RRT* do not rank nodes."
+        : roadmap ? "PRM ranks roadmap nodes, not cells, once the roadmap is built."
+        : "Press Step to see g, h and f for each expanded node.";
     }
 
     // Heuristic
@@ -873,6 +928,8 @@ export function start(root) {
       text = algo === "wastar"
         ? `Scaling ${inl("h")} by ${inl("\\varepsilon")} makes the search head for the goal sooner and expand fewer cells. In exchange the path can cost up to ${inl("\\varepsilon")} times the optimum.`
         : props.admissible ? `Optimal, because ${inl("h")} never overestimates.` : `Not guaranteed optimal, because ${inl("h")} can overestimate.`;
+    } else if (algo === "prm") {
+      text = "Probabilistically complete, like RRT. The path is the shortest one through the roadmap, not through free space, so it's only as good as the points it scattered. Narrow gaps need many samples, because a point has to land in the gap.";
     } else if (algo === "rrt") {
       text = "Probabilistically complete: if a path exists, the chance of finding it goes to 1 as samples grow. The first path found is kept, so it is rarely short.";
     } else {
@@ -894,6 +951,12 @@ export function start(root) {
       check.className = "small verdict";
       check.innerHTML = `This run: ${inl(`${num(found)} / ${num(optimum)} = ${num(found / optimum, 3)}`)} times the grid optimum.`;
     } else check.hidden = true;
+
+    // PRM roadmap size
+    const rm = roadmap && cur?.kind === "roadmap" ? cur : null;
+    tex($("#plan-math-prm-live"), rm
+      ? `n = ${rm.n - 2},\\ \\ k = ${rm.k},\\ \\ |E| = ${rm.edgeCount}`
+      : `n = ${opt.samples},\\ \\ k = ${opt.k}`);
 
     // RRT* radius
     const gamma = rrtGamma(freeCount(map.grid));
@@ -942,10 +1005,13 @@ export function start(root) {
   syncAlgo();
   scheduleCompare();
   requestRender();
+  const arm = createArmPlanner(root);
+  arm.setActive(true);
 
   return {
     setActive(on) {
       active = on;
+      arm.setActive(on);
       if (!on) {
         clearTimeout(compareTimer);
         return;
