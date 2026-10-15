@@ -44,7 +44,7 @@ export const PROFILES = {
   },
   drive: {
     name: "You steer",
-    blurb: "Drag along the track to pull the cart where you want it, or steer with the arrow keys. The filter is never told what you did, so your maneuver only reaches it through noisy position readings, a sample late. Raise q if you want it to keep up, and watch what that costs.",
+    blurb: "Drag along the track to pull the cart where you want it, or steer with the arrow keys. The filter is never told what you did, so your maneuver only reaches it through noisy position readings, a sample late. Raising q helps it keep up, but the estimate gets noisier.",
   },
 };
 

@@ -364,9 +364,9 @@ export function start(root) {
         <p>That reference is called a <b>frame</b>: a starting point plus a set of axes. The <b>world frame W</b> is fixed to the room. The robot's <b>base frame B</b> sits wherever the robot was bolted down, turned however it was installed.</p>
         <p>The tool tip <b>P</b> has an address in each one. Its base address ${inl("p_B")} stays the same when you move the base, because the arm moves with it. Its world address ${inl("p_W")} changes.</p>
         <p>To get from one to the other, turn by the base's angle, then add where the base is. A <b>transform</b> ${inl("T")} does both in a single matrix, using a trick called <b>homogeneous coordinates</b>: write the point with a 1 on the end, ${inl("(x, y, 1)")}, and put the shift in an extra column, ${inl("T = \\begin{bmatrix} R & t \\\\ 0 & 1 \\end{bmatrix}")}. A plain rotation matrix can only turn a point. With the extra 1, one multiplication turns it and shifts it.</p>
-        <p>Two things make that worth it. Going through several frames is just multiplying their matrices, ${inl("T_{AC} = T_{AB}\\,T_{BC}")}, which is exactly how the arms in the next lessons are built. And going back is easy: ${inl("T^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix}")}. A direction, as opposed to a point, gets a 0 instead of the 1, so it turns but never shifts.</p>
+        <p>Two things make that worth it. Going through several frames means multiplying their matrices, ${inl("T_{AC} = T_{AB}\\,T_{BC}")}, which is exactly how the arms in the next lessons are built. And going back is easy: ${inl("T^{-1} = \\begin{bmatrix} R^\\top & -R^\\top t \\\\ 0 & 1 \\end{bmatrix}")}. A direction, as opposed to a point, gets a 0 instead of the 1, so it turns but never shifts.</p>
         <div class="learn-try"><b>Try it</b><ul><li>Move the base with the sliders. Watch ${inl("p_W")} change while ${inl("p_B")} stays put.</li><li>Turn the base and see the whole arm turn with it.</li></ul></div>
-        <p class="learn-up-next"><b>Up next:</b> an arm is just a chain of these frames, one per joint. Working out where that chain puts the tool is forward kinematics.</p>`,
+        <p class="learn-up-next"><b>Up next:</b> an arm is a chain of these frames, one per joint. Working out where that chain puts the tool is forward kinematics.</p>`,
       controls() {
         const b = s2.base;
         return [sliders(
@@ -614,7 +614,7 @@ export function start(root) {
         <p>The <b>Jacobian</b> ${inl("J")} is what tells you how to nudge. It says how fast the tip moves for each joint's speed. Turn it around and "move the tip this way" becomes "turn the joints this much". The damping ${inl("\\lambda")} keeps those nudges sensible when ${inl("J")} can't be turned around.</p>
         <p>That happens at a <b>singularity</b>: a pose where the arm loses a direction it can move in, like when it's stretched out straight or two wrist axes line up. <b>Manipulability</b> ${inl("w")} says how far you are from one, and it drops to zero there.</p>
         <div class="learn-try"><b>Try it</b><ul><li>Move the target with the sliders and watch the arm work its way there.</li><li>Press <i>Straight up (singular)</i> and <i>Stretch out (singular)</i> and watch ${inl("w")} go to zero.</li><li>Press <i>Out of reach</i>: the arm gets as close as it can.</li></ul></div>
-        <p class="learn-up-next"><b>Up next:</b> reaching a point is one thing. Some moves need a whole plan, not just a nudge in the right direction.</p>`,
+        <p class="learn-up-next"><b>Up next:</b> some moves can't be made by nudging toward the goal. They need a whole plan.</p>`,
       controls() {
         const set = (i) => (v) => { s3.target[i] = v; s3.singular = null; startSolve(); };
         const items = [
@@ -700,7 +700,7 @@ export function start(root) {
         <p><b>iLQR</b>, the <i>iterative linear quadratic regulator</i>, makes that plan. It starts from a guess and keeps improving it. Each pass treats the arm as simple (linear) around the current plan, finds the best fix for that simpler problem, and keeps the fix only if it actually lowers the cost. That inner step is the <b>LQR</b> part: a linear model with a quadratic cost has an exact best answer. The chart shows every pass, faint to bold.</p>
         <p><b>MPC</b>, <i>model predictive control</i>, uses the same solver in a loop. Every 100 ms it re-plans from wherever the arm actually is, follows the first bit, then plans again. That's what makes it hold up when something unexpected happens.</p>
         <div class="learn-try"><b>Try it</b><ul><li>Watch the plan come together, pass by pass, then let it run.</li><li>Press <i>Kick</i> partway through. Following the plan blindly, it misses.</li><li>Switch to <i>Re-plan (MPC)</i> and kick it again. It recovers.</li><li>Lower the motor strength and count the swings it needs.</li></ul></div>
-        <p class="learn-up-next"><b>Up next:</b> everything so far assumed the robot knows where it is. Last step: what if it doesn't even have a map?</p>`,
+        <p class="learn-up-next"><b>Up next:</b> everything so far assumed the robot knows where it is. The last step drops that, and the map too.</p>`,
       controls() {
         return [
           sliders(
@@ -844,9 +844,9 @@ export function start(root) {
         <p>Lesson 1 asked "where is anything?" This last step asks it from the robot's side, with no map to go on.</p>
         <p>The Localization tab finds a robot on a map you hand it. <b>SLAM</b>, <i>simultaneous localization and mapping</i>, has to build the map and find itself on it at the same time.</p>
         <p>This robot drives a loop with a short-range sensor. The first time it sees a landmark, it adds it to its map where the measurement says, and that landmark picks up all the robot's uncertainty so far. The crosses are its map and the ellipses show how sure it is. Small wheel errors add up as it goes, so landmarks it maps later are less certain.</p>
-        <p>Then it gets back to the start and sees its first landmarks again. That's a <b>loop closure</b>. The filter, an <b>EKF</b> (<a href="#kalman"><i>extended Kalman filter</i></a>, like within the Localization tab), has kept track of how every landmark's error is tied to the robot's. So that one sighting fixes the robot and pulls the whole map back into place.</p>
+        <p>Then it gets back to the start and sees its first landmarks again. That's a <b>loop closure</b>. The filter, an <b>EKF</b> (<a href="#kalman"><i>extended Kalman filter</i></a>, the same kind the Localization tab uses), has kept track of how every landmark's error is tied to the robot's. So that one sighting fixes the robot and pulls the whole map back into place.</p>
         <div class="learn-try"><b>Try it</b><ul><li>Watch the chart below the map drop when the loop closes.</li><li>Shrink the sensor range or turn up wheel slip so it drifts more before it gets back.</li><li>Compare dead reckoning (dashed), which never looks at landmarks, so it just keeps drifting.</li></ul></div>
-        <p class="learn-up-next"><b>That's the class.</b> You've gone from frames to a robot mapping a place it's never seen. Each tab up top goes deeper on one of these.</p>`,
+        <p class="learn-up-next"><b>End of the class.</b> You've gone from frames to a robot mapping a place it's never seen. Each tab up top goes deeper on one of these topics.</p>`,
       controls() {
         return [
           el("div", { class: "learn-row" },
@@ -1113,10 +1113,10 @@ export function start(root) {
     // On a phone the lesson name drops out of the Next label (CSS), or the
     // button runs past the card. The last one finishes the class and goes home.
     if (index === LESSONS.length - 1) {
-      next.textContent = "Finished!";
+      next.textContent = "Finish";
       next.title = "Back to the roboticsbench home page";
     } else {
-      next.replaceChildren("Next", el("span", { class: "learn-next-name", text: `: ${LESSONS[index + 1].short}` }), " →");
+      next.replaceChildren(el("span", {}, "Next", el("span", { class: "learn-next-name", text: `: ${LESSONS[index + 1].short}` })));
       next.removeAttribute("title");
     }
     controls.replaceChildren(...l.controls());

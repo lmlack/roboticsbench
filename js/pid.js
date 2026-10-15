@@ -52,7 +52,7 @@ export function start(root) {
   const MODE_TEXT = {
     lqr: {
       title: "LQR, the linear-quadratic regulator",
-      about: "One fixed gain on the whole state, worked out once from a model of the system near the target. No plan, nothing to re-solve. It starts near the target, like PID, because it only knows the system there.",
+      about: "One fixed gain on the whole state, worked out once from a model of the system near the target. It doesn't plan or re-solve anything. It starts near the target, like PID, because it only knows the system there.",
     },
     mpc: {
       title: "MPC, model predictive control",
